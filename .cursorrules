@@ -1,0 +1,9 @@
+# .cursorrules
+# Project-wide AI instructions for Cursor
+
+The project uses TypeScript + Vite.
+Follow ESLint and Prettier configuration strictly.
+Use Tailwind CSS for styling; avoid inline styles.
+Use Yarn
+
+Use Hooks to sync backend data in frontend

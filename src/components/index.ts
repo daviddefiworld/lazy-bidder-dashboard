@@ -1,0 +1,8 @@
+export { default as ProtectedRoute } from './ProtectedRoute';
+export { default as ExtensionCard } from './ExtensionCard';
+export { default as ExtensionsGrid } from './ExtensionsGrid';
+export { default as UrlHistoryTable } from './UrlHistoryTable';
+export { default as ConnectionStatus } from './ConnectionStatus';
+export { default as SocketCommunication } from './SocketCommunication';
+export { default as LoadingSpinner } from './LoadingSpinner';
+export { default as ErrorAlert } from './ErrorAlert';
