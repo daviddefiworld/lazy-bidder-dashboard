@@ -14,7 +14,7 @@ import {
 
 const DashboardPage: React.FC = () => {
   const { user, logout } = useAuth();
-  const { isConnected, socketId, sendMessage, activateExtension, deactivateExtension } = useSocket();
+  const { isConnected, socketId, sendMessage, startExtension, stopExtension } = useSocket();
   
   // Use custom hooks for data management
   const {
@@ -27,6 +27,7 @@ const DashboardPage: React.FC = () => {
     setError,
     loadMoreUrlHistory,
     addUrlToHistory,
+    removeExtension,
   } = useDashboardData();
 
   const {
@@ -45,16 +46,25 @@ const DashboardPage: React.FC = () => {
     sendMessage('test_message', { message: 'Hello from dashboard!', timestamp: Date.now() });
   };
 
-  const handleActivateExtension = (extensionId: string) => {
-    activateExtension(extensionId);
+  const handleStartExtension = (extensionId: string) => {
+    startExtension(extensionId);
   };
 
-  const handleDeactivateExtension = (extensionId: string) => {
-    deactivateExtension(extensionId);
+  const handleStopExtension = (extensionId: string) => {
+    stopExtension(extensionId);
   };
 
   const handleLoadMore = () => {
     loadMoreUrlHistory();
+  };
+
+  const handleRemoveExtension = async (extensionId: string) => {
+    try {
+      await removeExtension(extensionId);
+    } catch (err) {
+      // Error is already set in the hook
+      console.error('Failed to remove extension:', err);
+    }
   };
 
   return (
@@ -89,8 +99,9 @@ const DashboardPage: React.FC = () => {
             extensions={extensions}
             extensionStatuses={extensionStatuses}
             isConnected={isConnected}
-            onActivateExtension={handleActivateExtension}
-            onDeactivateExtension={handleDeactivateExtension}
+            onStartExtension={handleStartExtension}
+            onStopExtension={handleStopExtension}
+            onRemoveExtension={handleRemoveExtension}
           />
 
           {/* URL History Section */}

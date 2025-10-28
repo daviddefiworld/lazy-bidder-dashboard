@@ -5,6 +5,7 @@ import { SocketProvider } from './contexts/SocketContext';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import DashboardPage from './pages/DashboardPage';
+import ExtensionControlPage from './pages/ExtensionControlPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 const AppRoutes: React.FC = () => {
@@ -25,6 +26,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/extension/:extensionId" 
+        element={
+          <ProtectedRoute>
+            <ExtensionControlPage />
           </ProtectedRoute>
         } 
       />

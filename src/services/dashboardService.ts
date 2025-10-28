@@ -10,7 +10,7 @@ export interface DashboardStats {
 
 export interface ExtensionWithStatus extends Extension {
   status: {
-    isActive: boolean;
+    isRunning: boolean;
     lastSeen: Date;
     isOnline: boolean;
     currentUrl?: string;
@@ -28,7 +28,7 @@ export class DashboardService {
   ): DashboardStats {
     const totalExtensions = extensions.length;
     const activeExtensions = Object.values(extensionStatuses).filter(
-      (status: any) => status.isActive
+      (status: any) => status.isRunning
     ).length;
     const onlineExtensions = Object.values(extensionStatuses).filter(
       (status: any) => status.isOnline
@@ -60,7 +60,7 @@ export class DashboardService {
     return extensions.map(extension => ({
       ...extension,
       status: extensionStatuses[extension.extensionId] || {
-        isActive: extension.isActive,
+        isRunning: extension.isRunning,
         lastSeen: new Date(extension.lastSeen),
         isOnline: false,
       },

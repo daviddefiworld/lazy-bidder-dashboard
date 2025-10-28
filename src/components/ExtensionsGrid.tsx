@@ -7,16 +7,18 @@ interface ExtensionsGridProps {
   extensions: Extension[];
   extensionStatuses: Record<string, ExtensionStatus>;
   isConnected: boolean;
-  onActivateExtension: (extensionId: string) => void;
-  onDeactivateExtension: (extensionId: string) => void;
+  onStartExtension: (extensionId: string) => void;
+  onStopExtension: (extensionId: string) => void;
+  onRemoveExtension: (extensionId: string) => void;
 }
 
 const ExtensionsGrid: React.FC<ExtensionsGridProps> = ({
   extensions,
   extensionStatuses,
   isConnected,
-  onActivateExtension,
-  onDeactivateExtension,
+  onStartExtension,
+  onStopExtension,
+  onRemoveExtension,
 }) => {
   if (extensions.length === 0) {
     return (
@@ -44,8 +46,9 @@ const ExtensionsGrid: React.FC<ExtensionsGridProps> = ({
               extension={extension}
               status={status}
               isConnected={isConnected}
-              onActivate={onActivateExtension}
-              onDeactivate={onDeactivateExtension}
+              onStart={onStartExtension}
+              onStop={onStopExtension}
+              onRemove={onRemoveExtension}
             />
           );
         })}

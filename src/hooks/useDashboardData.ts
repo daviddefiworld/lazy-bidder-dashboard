@@ -14,6 +14,7 @@ interface UseDashboardDataReturn {
   loadData: () => Promise<void>;
   loadMoreUrlHistory: () => Promise<void>;
   addUrlToHistory: (urlHistoryItem: UrlHistoryItem) => void;
+  removeExtension: (extensionId: string) => Promise<void>;
 }
 
 export const useDashboardData = (): UseDashboardDataReturn => {
@@ -96,6 +97,20 @@ export const useDashboardData = (): UseDashboardDataReturn => {
     });
   }, []);
 
+  const removeExtension = useCallback(async (extensionId: string) => {
+    setError(null);
+    
+    try {
+      await apiService.removeExtension(extensionId);
+      // Remove extension from local state
+      setExtensions(prev => prev.filter(ext => ext.extensionId !== extensionId));
+    } catch (err) {
+      console.error('Error removing extension:', err);
+      setError(err instanceof Error ? err.message : 'Failed to remove extension');
+      throw err;
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
   }, [user]);
@@ -112,5 +127,6 @@ export const useDashboardData = (): UseDashboardDataReturn => {
     loadData,
     loadMoreUrlHistory,
     addUrlToHistory,
+    removeExtension,
   };
 };

@@ -19,6 +19,8 @@ export interface SocketEvents {
   'extension:heartbeat': (data: { extensionId: string; isOnline: boolean; lastSeen: number }) => void;
   'extension:url_update': (data: { url: string; timestamp: number }) => void;
   'extension:url_change': (data: { extensionId: string; url: string; previousUrl?: string; title?: string; tabId?: number; timestamp: number; type: string }) => void;
+  'action:result': (data: { orderId: string; extensionId: string; actionType: string; actionConfig?: any; status: string; result?: any; error?: string; executedAt?: string; completedAt?: string }) => void;
+  'action:order_sent': (data: { message: string; orderId: string; extensionId: string }) => void;
   'user:authenticate': (data: { userId: string; email: string }) => void;
   'user:authenticated': (data: { message: string; userId: string; email: string }) => void;
 }
@@ -201,14 +203,23 @@ class SocketService {
     this.emit('user:authenticate', { userId, email });
   }
 
-  // Activate extension
-  activateExtension(extensionId: string): void {
-    this.sendMessage('activate_extension', { extensionId });
+  // Start extension
+  startExtension(extensionId: string): void {
+    this.sendMessage('start_extension', { extensionId });
   }
 
-  // Deactivate extension
-  deactivateExtension(extensionId: string): void {
-    this.sendMessage('deactivate_extension', { extensionId });
+  // Stop extension
+  stopExtension(extensionId: string): void {
+    this.sendMessage('stop_extension', { extensionId });
+  }
+
+  // Send action order via socket
+  sendActionOrder(extensionId: string, actionType: string, actionConfig: any): void {
+    this.sendMessage('create_action_order', {
+      extensionId,
+      actionType,
+      actionConfig
+    });
   }
 }
 

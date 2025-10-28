@@ -12,8 +12,8 @@ export interface SocketContextType {
   requestExtensionStatus: () => void;
   sendMessage: (type: string, data: any) => void;
   authenticateUser: (userId: string, email: string) => void;
-  activateExtension: (extensionId: string) => void;
-  deactivateExtension: (extensionId: string) => void;
+  startExtension: (extensionId: string) => void;
+  stopExtension: (extensionId: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -93,12 +93,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.authenticateUser(userId, email);
   };
 
-  const activateExtension = (extensionId: string): void => {
-    socketService.activateExtension(extensionId);
+  const startExtension = (extensionId: string): void => {
+    socketService.startExtension(extensionId);
   };
 
-  const deactivateExtension = (extensionId: string): void => {
-    socketService.deactivateExtension(extensionId);
+  const stopExtension = (extensionId: string): void => {
+    socketService.stopExtension(extensionId);
   };
 
   const contextValue: SocketContextType = {
@@ -112,8 +112,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     requestExtensionStatus,
     sendMessage,
     authenticateUser,
-    activateExtension,
-    deactivateExtension,
+    startExtension,
+    stopExtension,
   };
 
   return (

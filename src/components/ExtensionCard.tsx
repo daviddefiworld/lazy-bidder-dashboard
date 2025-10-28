@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Extension } from '../services/apiService';
 import { ExtensionStatus } from '../types/dashboard';
 
@@ -6,26 +7,51 @@ interface ExtensionCardProps {
   extension: Extension;
   status: ExtensionStatus;
   isConnected: boolean;
-  onActivate: (extensionId: string) => void;
-  onDeactivate: (extensionId: string) => void;
+  onStart: (extensionId: string) => void;
+  onStop: (extensionId: string) => void;
+  onRemove: (extensionId: string) => void;
 }
 
 const ExtensionCard: React.FC<ExtensionCardProps> = ({
   extension,
   status,
   isConnected,
-  onActivate,
-  onDeactivate,
+  onStart,
+  onStop,
+  onRemove,
 }) => {
+  const navigate = useNavigate();
+  
   const formatDate = (date: Date) => {
     return date.toLocaleString();
   };
 
+  const handleCardClick = () => {
+    navigate(`/extension/${extension.extensionId}`);
+  };
+
   return (
-    <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+    <div 
+      className="relative border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+      onClick={handleCardClick}
+    >
+      {/* Close button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(extension.extensionId);
+        }}
+        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors z-10"
+        title="Remove extension"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      
       <div className="flex flex-col h-full">
         <div className="flex items-center space-x-2 mb-3">
-          <div className={`w-3 h-3 rounded-full ${status.isActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+          <div className={`w-3 h-3 rounded-full ${status.isRunning ? 'bg-green-500' : 'bg-red-500'}`}></div>
           <h3 className="text-sm font-medium text-gray-900 truncate">
             {extension.extensionId.slice(0, 8)}...
           </h3>
@@ -34,9 +60,9 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
         <div className="flex flex-col space-y-2 mb-4 flex-grow">
           <div className="flex flex-wrap gap-1">
             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-              status.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              status.isRunning ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
             }`}>
-              {status.isActive ? 'Active' : 'Inactive'}
+              {status.isRunning ? 'Running' : 'Stopped'}
             </span>
             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
               status.isOnline ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
@@ -59,22 +85,22 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
           </div>
         </div>
         
-        <div className="mt-auto">
-          {status.isActive ? (
+        <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
+          {status.isRunning ? (
             <button
-              onClick={() => onDeactivate(extension.extensionId)}
+              onClick={() => onStop(extension.extensionId)}
               disabled={!isConnected}
               className="w-full px-3 py-2 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Deactivate
+              Stop
             </button>
           ) : (
             <button
-              onClick={() => onActivate(extension.extensionId)}
+              onClick={() => onStart(extension.extensionId)}
               disabled={!isConnected}
               className="w-full px-3 py-2 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Activate
+              Start
             </button>
           )}
         </div>

@@ -24,7 +24,7 @@ export const useSocketEvents = (): UseSocketEventsReturn => {
       data.extensions.forEach((ext: any) => {
         // Extensions are considered online if they're in the status list (connected to backend)
         statusMap[ext.extensionId] = {
-          isActive: ext.isActive,
+          isRunning: ext.isRunning,
           lastSeen: new Date(ext.lastSeen),
           isOnline: true, // If we're getting this list, extensions are connected
           currentUrl: ext.currentUrl
@@ -34,13 +34,13 @@ export const useSocketEvents = (): UseSocketEventsReturn => {
       setExtensionStatuses(statusMap);
     };
 
-    const handleExtensionActivationUpdate = (data: any) => {
-      console.log('Received extension activation update:', data);
+    const handleExtensionRunningUpdate = (data: any) => {
+      console.log('Received extension running update:', data);
       setExtensionStatuses(prev => ({
         ...prev,
         [data.extensionId]: {
           ...prev[data.extensionId],
-          isActive: data.isActive,
+          isRunning: data.isRunning,
           lastSeen: new Date(data.timestamp)
         }
       }));
@@ -110,7 +110,7 @@ export const useSocketEvents = (): UseSocketEventsReturn => {
 
     // Set up event listeners
     on('extension:status_list', handleExtensionStatusList);
-    on('extension:activation_update', handleExtensionActivationUpdate);
+    on('extension:running_update', handleExtensionRunningUpdate);
     on('extension:status', handleExtensionStatus);
     on('extension:online_status', handleExtensionOnlineStatus);
     on('extension:url_change', handleExtensionUrlChange);
@@ -122,7 +122,7 @@ export const useSocketEvents = (): UseSocketEventsReturn => {
 
     return () => {
       off('extension:status_list', handleExtensionStatusList);
-      off('extension:activation_update', handleExtensionActivationUpdate);
+      off('extension:running_update', handleExtensionRunningUpdate);
       off('extension:status', handleExtensionStatus);
       off('extension:online_status', handleExtensionOnlineStatus);
       off('extension:url_change', handleExtensionUrlChange);

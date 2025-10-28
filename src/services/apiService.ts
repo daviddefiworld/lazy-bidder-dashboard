@@ -6,7 +6,7 @@ export interface Extension {
   extensionId: string;
   userEmail: string;
   userId: string;
-  isActive: boolean;
+  isRunning: boolean;
   lastSeen: string;
   userAgent?: string;
   version?: string;
@@ -103,6 +103,10 @@ class ApiService {
     return this.axiosInstance.get('/api/extensions/url-history', { params });
   }
 
+  async removeExtension(extensionId: string): Promise<void> {
+    return this.axiosInstance.delete(`/api/extensions/${extensionId}`);
+  }
+
   // Update token when user logs in
   updateToken(_token: string) {
     // Token is managed automatically via localStorage
@@ -111,6 +115,23 @@ class ApiService {
   // Clear token when user logs out
   clearToken() {
     // Token is managed automatically via localStorage
+  }
+
+  async createActionOrder(extensionId: string, actionType: string, actionConfig: any) {
+    return this.axiosInstance.post('/api/action-orders', {
+      extensionId,
+      actionType,
+      actionConfig
+    });
+  }
+
+  async getActionOrders(extensionId?: string) {
+    const params = extensionId ? { extensionId } : {};
+    return this.axiosInstance.get('/api/action-orders', { params });
+  }
+
+  async getActionOrder(orderId: string) {
+    return this.axiosInstance.get(`/api/action-orders/${orderId}`);
   }
 }
 

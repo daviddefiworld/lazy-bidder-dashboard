@@ -1,7 +1,7 @@
 import { Extension, UrlHistoryItem } from '../services/apiService';
 
 export interface ExtensionStatus {
-  isActive: boolean;
+  isRunning: boolean;
   lastSeen: Date;
   isOnline: boolean;
   currentUrl?: string;
@@ -56,8 +56,8 @@ export interface DashboardActions {
   loadData: () => Promise<void>;
   setPage: (page: number) => void;
   setError: (error: string | null) => void;
-  activateExtension: (extensionId: string) => void;
-  deactivateExtension: (extensionId: string) => void;
+  startExtension: (extensionId: string) => void;
+  stopExtension: (extensionId: string) => void;
   sendTestMessage: () => void;
 }
 
