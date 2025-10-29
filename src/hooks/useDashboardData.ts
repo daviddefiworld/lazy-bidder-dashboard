@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService, Extension, UrlHistoryItem } from '../services/apiService';
 
@@ -79,7 +79,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
     }
   };
 
-  const addUrlToHistory = useCallback((urlHistoryItem: UrlHistoryItem) => {
+  const addUrlToHistory = (urlHistoryItem: UrlHistoryItem) => {
     setUrlHistory(prev => {
       // Check if this URL change already exists to prevent duplicates
       const exists = prev.some(item => 
@@ -95,9 +95,9 @@ export const useDashboardData = (): UseDashboardDataReturn => {
       setTotalUrlHistory(prevTotal => prevTotal + 1);
       return [urlHistoryItem, ...prev];
     });
-  }, []);
+  };
 
-  const removeExtension = useCallback(async (extensionId: string) => {
+  const removeExtension = async (extensionId: string) => {
     setError(null);
     
     try {
@@ -109,7 +109,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
       setError(err instanceof Error ? err.message : 'Failed to remove extension');
       throw err;
     }
-  }, []);
+  };
 
   useEffect(() => {
     loadData();

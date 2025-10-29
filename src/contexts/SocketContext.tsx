@@ -9,9 +9,7 @@ export interface SocketContextType {
   emit: (event: string, data: any) => void;
   on: (event: string, callback: (...args: any[]) => void) => void;
   off: (event: string, callback?: (...args: any[]) => void) => void;
-  requestExtensionStatus: () => void;
   sendMessage: (type: string, data: any) => void;
-  authenticateUser: (userId: string, email: string) => void;
   startExtension: (extensionId: string) => void;
   stopExtension: (extensionId: string) => void;
 }
@@ -81,16 +79,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.off(event as any, callback);
   };
 
-  const requestExtensionStatus = (): void => {
-    socketService.requestExtensionStatus();
-  };
-
   const sendMessage = (type: string, data: any): void => {
     socketService.sendMessage(type, data);
-  };
-
-  const authenticateUser = (userId: string, email: string): void => {
-    socketService.authenticateUser(userId, email);
   };
 
   const startExtension = (extensionId: string): void => {
@@ -109,9 +99,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     emit,
     on,
     off,
-    requestExtensionStatus,
     sendMessage,
-    authenticateUser,
     startExtension,
     stopExtension,
   };

@@ -1,233 +1,31 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { apiService, Extension, UrlHistoryItem } from '../services/apiService';
-import { ExtensionStatus } from '../types/dashboard';
 import ErrorAlert from '../components/ErrorAlert';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ActionOrderCreator from '../components/ActionOrderCreator';
-
-type ActionType = 'activate_extension' | 'deactivate_extension' | 'test_message' | 'custom';
-
-interface ActionLog {
-  id: string;
-  timestamp: Date;
-  actionType: string;
-  parameters: any;
-  result: any;
-  success: boolean;
-}
+import { useActionLogs } from '../hooks/useActionLogs';
+import { useExtensionStatus } from '../hooks/useExtensionStatus';
+import { formatDate } from '../utils/formatters';
 
 const ExtensionControlPage: React.FC = () => {
   const { extensionId } = useParams<{ extensionId: string }>();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { isConnected, sendMessage } = useSocket();
+  const { isConnected, startExtension, stopExtension, on, off } = useSocket();
 
   const [extension, setExtension] = useState<Extension | null>(null);
-  const [status, setStatus] = useState<ExtensionStatus | null>(null);
   const [urlHistory, setUrlHistory] = useState<UrlHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Action panel state
-  const [actionType, setActionType] = useState<ActionType>('test_message');
-  const [parameters, setParameters] = useState('');
-  const [sending, setSending] = useState(false);
-  
-  // Refs to store latest values for socket handlers
-  const actionTypeRef = useRef(actionType);
-  const parametersRef = useRef(parameters);
-  
-  // Update refs when values change
-  useEffect(() => {
-    actionTypeRef.current = actionType;
-  }, [actionType]);
-  
-  useEffect(() => {
-    parametersRef.current = parameters;
-  }, [parameters]);
-  
-  // Logs state
-  const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
-  
-  // Stats
-  const [totalActions, setTotalActions] = useState(0);
-  const [failedActions, setFailedActions] = useState(0);
+  // Use custom hooks
+  const { actionLogs, totalActions, failedActions, addActionLog, clearLogs } = useActionLogs();
+  const { status, setStatus, handleStatusUpdate, handleActivationUpdate, handleRunningUpdate, handleOnlineStatus } = useExtensionStatus(extensionId);
 
-  // Add action log function
-  const addActionLog = React.useCallback((action: string, params: string, result: any, success: boolean) => {
-    const log: ActionLog = {
-      id: Date.now().toString(),
-      timestamp: new Date(),
-      actionType: action,
-      parameters: params,
-      result,
-      success
-    };
-    
-    setActionLogs(prev => [log, ...prev].slice(0, 100)); // Keep last 100 logs
-    setTotalActions(prev => prev + 1);
-    if (!success) {
-      setFailedActions(prev => prev + 1);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadExtensionData();
-  }, [extensionId]);
-
-  // Set up socket listeners
-  useEffect(() => {
-    let cleanupFn: (() => void) | undefined;
-    
-    import('../services/socketService').then(module => {
-      const socketService = module.default;
-      
-      const handleStatusUpdate = (data: any) => {
-        if (data.extensionId === extensionId) {
-          setStatus(prev => ({
-            ...prev!,
-            currentUrl: data.currentUrl,
-            lastSeen: new Date(data.lastSeen),
-            isOnline: true
-          }));
-        }
-      };
-      
-      const handleActivationUpdate = (data: any) => {
-        if (data.extensionId === extensionId) {
-          setStatus(prev => ({
-            ...prev!,
-            isActive: data.isActive
-          }));
-        }
-      };
-      
-      const handleOnlineStatus = (data: any) => {
-        if (data.extensionId === extensionId) {
-          setStatus(prev => ({
-            ...prev!,
-            isOnline: data.isOnline,
-            lastSeen: new Date()
-          }));
-        }
-      };
-      
-      const handleUrlChange = (data: any) => {
-        if (data.extensionId === extensionId) {
-          loadUrlHistory();
-        }
-      };
-
-      const handleBackendResponse = (data: any) => {
-        setActionLogs(prev => {
-          const log: ActionLog = {
-            id: Date.now().toString(),
-            timestamp: new Date(),
-            actionType: actionTypeRef.current,
-            parameters: parametersRef.current,
-            result: data,
-            success: true
-          };
-          setTotalActions(prev => prev + 1);
-          return [log, ...prev].slice(0, 100);
-        });
-        setSending(false);
-      };
-
-      const handleBackendError = (data: any) => {
-        setActionLogs(prev => {
-          const log: ActionLog = {
-            id: Date.now().toString(),
-            timestamp: new Date(),
-            actionType: actionTypeRef.current,
-            parameters: parametersRef.current,
-            result: data,
-            success: false
-          };
-          setTotalActions(prev => prev + 1);
-          setFailedActions(prev => prev + 1);
-          return [log, ...prev].slice(0, 100);
-        });
-        setSending(false);
-      };
-
-      const handleActionResult = (data: any) => {
-        if (data.extensionId === extensionId) {
-          setActionLogs(prev => {
-            const log: ActionLog = {
-              id: Date.now().toString(),
-              timestamp: new Date(),
-              actionType: `${data.actionType} (${data.orderId.slice(0, 8)})`,
-              parameters: JSON.stringify(data.actionConfig || {}),
-              result: data.error || data.result,
-              success: data.status === 'completed'
-            };
-            setTotalActions(prev => prev + 1);
-            if (data.status !== 'completed') {
-              setFailedActions(prev => prev + 1);
-            }
-            return [log, ...prev].slice(0, 100);
-          });
-        }
-      };
-
-      socketService.on('extension:status', handleStatusUpdate);
-      socketService.on('extension:activation_update', handleActivationUpdate);
-      socketService.on('extension:online_status', handleOnlineStatus);
-      socketService.on('extension:url_change', handleUrlChange);
-      socketService.on('backend:response', handleBackendResponse);
-      socketService.on('backend:error', handleBackendError);
-      socketService.on('action:result', handleActionResult);
-
-      cleanupFn = () => {
-        socketService.off('extension:status', handleStatusUpdate);
-        socketService.off('extension:activation_update', handleActivationUpdate);
-        socketService.off('extension:online_status', handleOnlineStatus);
-        socketService.off('extension:url_change', handleUrlChange);
-        socketService.off('backend:response', handleBackendResponse);
-        socketService.off('backend:error', handleBackendError);
-        socketService.off('action:result', handleActionResult);
-      };
-    });
-
-    return () => {
-      if (cleanupFn) cleanupFn();
-    };
-  }, [extensionId]);
-
-  const loadExtensionData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const extensions = await apiService.getExtensions();
-      const foundExtension = extensions.find(ext => ext.extensionId === extensionId);
-      
-      if (!foundExtension) {
-        setError('Extension not found');
-        return;
-      }
-      
-      setExtension(foundExtension);
-      setStatus({
-        isActive: foundExtension.isActive,
-        lastSeen: new Date(foundExtension.lastSeen),
-        isOnline: true, // Will be updated by socket
-        currentUrl: undefined
-      });
-      
-      await loadUrlHistory();
-    } catch (err) {
-      console.error('Failed to load extension data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load extension data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load URL history
   const loadUrlHistory = async () => {
     if (!extensionId) return;
     
@@ -240,62 +38,108 @@ const ExtensionControlPage: React.FC = () => {
     }
   };
 
-  const handleSendAction = async () => {
-    if (!extensionId || !isConnected) {
-      setError('Extension not connected or not available');
-      return;
-    }
-    
+  const loadExtensionData = async () => {
     try {
-      setSending(true);
+      setLoading(true);
       setError(null);
       
-      let data: any = {};
-      
-      // Parse parameters if provided
-      if (parameters.trim()) {
-        try {
-          data = JSON.parse(parameters);
-        } catch {
-          // If not valid JSON, treat as single parameter
-          data = { value: parameters };
-        }
+      if (!extensionId) {
+        setError('Extension ID is required');
+        return;
       }
       
-      // Add extensionId to data for action types that need it
-      if (actionType !== 'test_message') {
-        data.extensionId = extensionId;
+      const extensions = await apiService.getExtensions();
+      const foundExtension = extensions.find(ext => ext.extensionId === extensionId);
+      
+      if (!foundExtension) {
+        setError('Extension not found');
+        return;
       }
       
-      // Send the message
-      sendMessage(actionType, data);
+      setExtension(foundExtension);
+      setStatus({
+        isRunning: foundExtension.isRunning,
+        lastSeen: new Date(foundExtension.lastSeen),
+        isOnline: true,
+        currentUrl: undefined
+      });
       
+      await loadUrlHistory();
     } catch (err) {
-      console.error('Failed to send action:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send action');
-      setSending(false);
+      console.error('Failed to load extension data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load extension data');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleActivate = async () => {
-    if (!extensionId) return;
-    setActionType('activate_extension');
-    setParameters('{}');
-    await handleSendAction();
+  useEffect(() => {
+    loadExtensionData();
+  }, [extensionId]);
+
+  // Socket event handlers
+  const handleUrlChange = (data: any) => {
+    if (data.extensionId === extensionId) {
+      loadUrlHistory();
+    }
   };
 
-  const handleDeactivate = async () => {
+  const handleBackendResponse = (data: any) => {
+    addActionLog('backend_response', '{}', data, true);
+  };
+
+  const handleBackendError = (data: any) => {
+    addActionLog('backend_error', '{}', data, false);
+  };
+
+  const handleActionResult = (data: any) => {
+    if (data.extensionId === extensionId) {
+      addActionLog(
+        `${data.actionType} (${data.orderId.slice(0, 8)})`,
+        JSON.stringify(data.actionConfig || {}),
+        data.error || data.result,
+        data.status === 'completed'
+      );
+    }
+  };
+
+  // Set up socket listeners
+  useEffect(() => {
+    on('extension:status', handleStatusUpdate);
+    on('extension:activation_update', handleActivationUpdate);
+    on('extension:running_update', handleRunningUpdate);
+    on('extension:online_status', handleOnlineStatus);
+    on('extension:url_change', handleUrlChange);
+    on('backend:response', handleBackendResponse);
+    on('backend:error', handleBackendError);
+    on('action:result', handleActionResult);
+
+    return () => {
+      off('extension:status', handleStatusUpdate);
+      off('extension:activation_update', handleActivationUpdate);
+      off('extension:running_update', handleRunningUpdate);
+      off('extension:online_status', handleOnlineStatus);
+      off('extension:url_change', handleUrlChange);
+      off('backend:response', handleBackendResponse);
+      off('backend:error', handleBackendError);
+      off('action:result', handleActionResult);
+    };
+  }, [extensionId, on, off, handleStatusUpdate, handleActivationUpdate, handleRunningUpdate, handleOnlineStatus, handleUrlChange, handleBackendResponse, handleBackendError, handleActionResult]);
+
+  const handleActivate = () => {
     if (!extensionId) return;
-    setActionType('deactivate_extension');
-    setParameters('{}');
-    await handleSendAction();
+    startExtension(extensionId);
+  };
+
+  const handleDeactivate = () => {
+    if (!extensionId) return;
+    stopExtension(extensionId);
   };
 
   const handleCreateOrder = async (extensionId: string, actionType: string, actionConfig: any) => {
     try {
       setError(null);
       
-      // Use socket service to send action order via socket interface
       if (isConnected) {
         const socketModule = await import('../services/socketService');
         const socketService = socketModule.default;
@@ -311,12 +155,9 @@ const ExtensionControlPage: React.FC = () => {
     }
   };
 
-  const formatDate = (date: Date | string) => {
-    const d = new Date(date);
-    return d.toLocaleString();
-  };
 
   if (loading) {
+    console.log('ExtensionControlPage: Showing loading spinner');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <LoadingSpinner />
@@ -325,12 +166,17 @@ const ExtensionControlPage: React.FC = () => {
   }
 
   if (error && !extension) {
+    console.log('ExtensionControlPage: Showing error:', error);
     return (
       <div className="min-h-screen bg-gray-50">
         <ErrorAlert error={error} onDismiss={() => navigate('/dashboard')} />
       </div>
     );
   }
+
+  console.log('ExtensionControlPage: Rendering main content');
+  console.log('Extension:', extension);
+  console.log('Status:', status);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -365,7 +211,7 @@ const ExtensionControlPage: React.FC = () => {
         <div className="px-4 py-6 sm:px-0">
           {error && <ErrorAlert error={error} onDismiss={() => setError(null)} />}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Left Section - Extension Status */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Extension Status</h2>
@@ -375,9 +221,9 @@ const ExtensionControlPage: React.FC = () => {
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
                     <span className="text-sm font-medium text-gray-700">Status</span>
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      status.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      status.isRunning ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                     }`}>
-                      {status.isActive ? 'Active' : 'Inactive'}
+                      {status.isRunning ? 'Active' : 'Inactive'}
                     </span>
                   </div>
                   
@@ -415,21 +261,21 @@ const ExtensionControlPage: React.FC = () => {
                   )}
                   
                   <div className="flex space-x-3 pt-4">
-                    {!status.isActive ? (
+                    {!status.isRunning ? (
                       <button
                         onClick={handleActivate}
-                        disabled={!isConnected || sending}
+                        disabled={!isConnected}
                         className="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Activate
+                        Start
                       </button>
                     ) : (
                       <button
                         onClick={handleDeactivate}
-                        disabled={!isConnected || sending}
+                        disabled={!isConnected}
                         className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Deactivate
+                        Stop
                       </button>
                     )}
                   </div>
@@ -444,69 +290,25 @@ const ExtensionControlPage: React.FC = () => {
                 onCreateOrder={handleCreateOrder}
               />
             )}
-            
-            {/* Action Controller (Deprecated - kept for backward compatibility) */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Action Controller</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Action Type
-                  </label>
-                  <select
-                    value={actionType}
-                    onChange={(e) => setActionType(e.target.value as ActionType)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="test_message">Test Message</option>
-                    <option value="activate_extension">Activate Extension</option>
-                    <option value="deactivate_extension">Deactivate Extension</option>
-                    <option value="custom">Custom Action</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Parameters (JSON)
-                  </label>
-                  <textarea
-                    value={parameters}
-                    onChange={(e) => setParameters(e.target.value)}
-                    placeholder='{"key": "value"}'
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  />
-                </div>
-                
-                <button
-                  onClick={handleSendAction}
-                  disabled={!isConnected || sending}
-                  className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {sending ? 'Sending...' : 'Send Action'}
-                </button>
-                
-                {/* Action Stats */}
-                <div className="pt-4 border-t border-gray-200">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center">
-                      <p className="text-2xl font-semibold text-gray-900">{totalActions}</p>
-                      <p className="text-xs text-gray-600">Total Actions</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-semibold text-red-600">{failedActions}</p>
-                      <p className="text-xs text-gray-600">Failed</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Logs Section */}
           <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Action Logs</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Action Logs</h2>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-4 text-sm text-gray-600">
+                  <span>Total: {totalActions}</span>
+                  <span>Failed: {failedActions}</span>
+                </div>
+                <button
+                  onClick={clearLogs}
+                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                >
+                  Clear Logs
+                </button>
+              </div>
+            </div>
             
             {actionLogs.length === 0 ? (
               <p className="text-sm text-gray-500 text-center py-8">No action logs yet</p>

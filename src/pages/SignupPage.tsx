@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,7 +20,7 @@ type SignupFormData = z.infer<typeof signupSchema>;
 const SignupPage: React.FC = () => {
   const { signup, isLoading } = useAuth();
   const navigate = useNavigate();
-  const [error, setError] = React.useState<string>('');
+  const [error, setError] = useState<string>('');
 
   const {
     register,

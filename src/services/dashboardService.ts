@@ -1,4 +1,6 @@
 import { Extension, UrlHistoryItem } from './apiService';
+import { formatExtensionId } from '../utils/formatters';
+import { getDomainFromUrl, isUrlFromDomain, groupUrlHistoryByDomain } from '../utils/urlUtils';
 
 export interface DashboardStats {
   totalExtensions: number;
@@ -94,44 +96,28 @@ export class DashboardService {
   /**
    * Format extension ID for display
    */
-  static formatExtensionId(extensionId: string, length: number = 8): string {
-    return `${extensionId.slice(0, length)}...`;
+  static formatExtensionIdDisplay(extensionId: string, length: number = 8): string {
+    return formatExtensionId(extensionId);
   }
 
   /**
    * Get domain from URL
    */
   static getDomainFromUrl(url: string): string {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return url;
-    }
+    return getDomainFromUrl(url);
   }
 
   /**
    * Check if URL is from a specific domain
    */
   static isUrlFromDomain(url: string, domain: string): boolean {
-    try {
-      const urlDomain = new URL(url).hostname;
-      return urlDomain.includes(domain);
-    } catch {
-      return false;
-    }
+    return isUrlFromDomain(url, domain);
   }
 
   /**
    * Group URL history by domain
    */
   static groupUrlHistoryByDomain(urlHistory: UrlHistoryItem[]): Record<string, UrlHistoryItem[]> {
-    return urlHistory.reduce((groups, item) => {
-      const domain = this.getDomainFromUrl(item.url);
-      if (!groups[domain]) {
-        groups[domain] = [];
-      }
-      groups[domain].push(item);
-      return groups;
-    }, {} as Record<string, UrlHistoryItem[]>);
+    return groupUrlHistoryByDomain(urlHistory);
   }
 }

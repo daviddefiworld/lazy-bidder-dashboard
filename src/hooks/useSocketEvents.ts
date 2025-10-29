@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ExtensionStatus } from '../types/dashboard';
@@ -10,7 +10,7 @@ interface UseSocketEventsReturn {
 }
 
 export const useSocketEvents = (): UseSocketEventsReturn => {
-  const { isConnected, on, off, requestExtensionStatus } = useSocket();
+  const { isConnected, on, off } = useSocket();
   const { user } = useAuth();
   const [extensionStatuses, setExtensionStatuses] = useState<Record<string, ExtensionStatus>>({});
   const urlChangeCallbackRef = useRef<((urlHistoryItem: UrlHistoryItem) => void) | null>(null);
@@ -117,7 +117,10 @@ export const useSocketEvents = (): UseSocketEventsReturn => {
 
     // Request extension status on mount
     if (isConnected) {
-      requestExtensionStatus();
+      // Import socketService to request extension status
+      import('../services/socketService').then(module => {
+        module.default.requestExtensionStatus();
+      });
     }
 
     return () => {
@@ -127,11 +130,11 @@ export const useSocketEvents = (): UseSocketEventsReturn => {
       off('extension:online_status', handleExtensionOnlineStatus);
       off('extension:url_change', handleExtensionUrlChange);
     };
-  }, [isConnected, on, off, requestExtensionStatus, user?.email, user?.id]);
+  }, [isConnected, on, off, user?.email, user?.id]);
 
-  const onUrlChange = useCallback((callback: (urlHistoryItem: UrlHistoryItem) => void) => {
+  const onUrlChange = (callback: (urlHistoryItem: UrlHistoryItem) => void) => {
     urlChangeCallbackRef.current = callback;
-  }, []);
+  };
 
   return {
     extensionStatuses,

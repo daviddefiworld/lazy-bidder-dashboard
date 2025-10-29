@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useDashboardData } from '../hooks/useDashboardData';
@@ -36,7 +36,7 @@ const DashboardPage: React.FC = () => {
   } = useSocketEvents();
 
   // Set up URL change callback to add new URLs directly to history
-  React.useEffect(() => {
+  useEffect(() => {
     onUrlChange(addUrlToHistory);
   }, [onUrlChange, addUrlToHistory]);
 

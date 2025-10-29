@@ -15,7 +15,6 @@ const ActionOrderCreator: React.FC<ActionOrderCreatorProps> = ({ extensionId, on
   const [value, setValue] = useState('');
   const [waitTime, setWaitTime] = useState(1000);
   const [script, setScript] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleCreate = () => {
     const config: any = {

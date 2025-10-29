@@ -15,6 +15,7 @@ export interface SocketEvents {
   'extension:status': (data: { isConnected: boolean; currentUrl?: string; lastSeen?: number; extensionId?: string }) => void;
   'extension:status_list': (data: { extensions: Array<{ extensionId: string; isActive: boolean; lastSeen: Date; version?: string; userAgent?: string; isOnline?: boolean; currentUrl?: string }> }) => void;
   'extension:activation_update': (data: { extensionId: string; isActive: boolean; timestamp: number }) => void;
+  'extension:running_update': (data: { extensionId: string; isRunning: boolean; timestamp: number }) => void;
   'extension:online_status': (data: { extensionId: string; isOnline: boolean; timestamp: number }) => void;
   'extension:heartbeat': (data: { extensionId: string; isOnline: boolean; lastSeen: number }) => void;
   'extension:url_update': (data: { url: string; timestamp: number }) => void;

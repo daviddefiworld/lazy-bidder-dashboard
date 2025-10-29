@@ -35,7 +35,7 @@ const ExtensionsGrid: React.FC<ExtensionsGridProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {extensions.map((extension) => {
           const status = extensionStatuses[extension.extensionId] || {
-            isActive: extension.isActive,
+            isRunning: extension.isRunning,
             lastSeen: new Date(extension.lastSeen),
             isOnline: false
           };

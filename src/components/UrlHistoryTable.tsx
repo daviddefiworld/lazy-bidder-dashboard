@@ -1,5 +1,6 @@
 import React from 'react';
 import { UrlHistoryItem } from '../services/apiService';
+import { formatDate, formatExtensionId, getTypeColor } from '../utils/formatters';
 
 interface UrlHistoryTableProps {
   urlHistory: UrlHistoryItem[];
@@ -16,18 +17,6 @@ const UrlHistoryTable: React.FC<UrlHistoryTableProps> = ({
   loading,
   onLoadMore,
 }) => {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'page_load': return 'bg-blue-100 text-blue-800';
-      case 'spa_navigation': return 'bg-green-100 text-green-800';
-      case 'tab_change': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
 
 
   if (urlHistory.length === 0) {
@@ -66,7 +55,7 @@ const UrlHistoryTable: React.FC<UrlHistoryTableProps> = ({
             {urlHistory.map((item) => (
               <tr key={item._id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                  {item.extensionId.slice(0, 8)}...
+                  {formatExtensionId(item.extensionId)}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
                   <div className="truncate" title={item.url}>

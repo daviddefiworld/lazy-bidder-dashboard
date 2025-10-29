@@ -7,3 +7,5 @@ Use Tailwind CSS for styling; avoid inline styles.
 Use Yarn
 
 Use Hooks to sync backend data in frontend
+keep consistency
+Keep KISS principle

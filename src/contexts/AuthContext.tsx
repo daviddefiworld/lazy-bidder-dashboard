@@ -26,7 +26,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { connect, disconnect, authenticateUser } = useSocket();
+  const { connect, disconnect } = useSocket();
 
   useEffect(() => {
     // Check for existing session on mount
@@ -48,11 +48,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const serverUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
       await connect(serverUrl, token);
-      
-      // Authenticate user with socket
-      if (user) {
-        authenticateUser(user.id, user.email);
-      }
     } catch (error) {
       console.error('Failed to connect to socket:', error);
     }
