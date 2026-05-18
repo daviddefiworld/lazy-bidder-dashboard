@@ -4,14 +4,12 @@ import socketService from '../services/socketService';
 export interface SocketContextType {
   isConnected: boolean;
   socketId: string | undefined;
-  connect: (serverUrl: string, token: string) => Promise<void>;
+  connect: (serverUrl: string) => Promise<void>;
   disconnect: () => void;
   emit: (event: string, data: any) => void;
   on: (event: string, callback: (...args: any[]) => void) => void;
   off: (event: string, callback?: (...args: any[]) => void) => void;
   sendMessage: (type: string, data: any) => void;
-  startExtension: (extensionId: string) => void;
-  stopExtension: (extensionId: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -33,16 +31,29 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [socketId, setSocketId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    // Set up connection status listeners
+    const serverUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+    socketService
+      .connect(serverUrl)
+      .then(() => {
+        setIsConnected(true);
+        setSocketId(socketService.getSocketId());
+      })
+      .catch((err) => console.error('Socket connect failed:', err));
+
+    return () => {
+      socketService.disconnect();
+      setIsConnected(false);
+      setSocketId(undefined);
+    };
+  }, []);
+
+  useEffect(() => {
     const updateConnectionStatus = () => {
       setIsConnected(socketService.getConnectionStatus());
       setSocketId(socketService.getSocketId());
     };
 
-    // Initial status check
     updateConnectionStatus();
-
-    // Set up interval to check connection status
     const statusInterval = setInterval(updateConnectionStatus, 1000);
 
     return () => {
@@ -50,15 +61,10 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     };
   }, []);
 
-  const connect = async (serverUrl: string, token: string): Promise<void> => {
-    try {
-      await socketService.connect(serverUrl, token);
-      setIsConnected(true);
-      setSocketId(socketService.getSocketId());
-    } catch (error) {
-      console.error('Failed to connect to socket:', error);
-      throw error;
-    }
+  const connect = async (serverUrl: string): Promise<void> => {
+    await socketService.connect(serverUrl);
+    setIsConnected(true);
+    setSocketId(socketService.getSocketId());
   };
 
   const disconnect = (): void => {
@@ -83,14 +89,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.sendMessage(type, data);
   };
 
-  const startExtension = (extensionId: string): void => {
-    socketService.startExtension(extensionId);
-  };
-
-  const stopExtension = (extensionId: string): void => {
-    socketService.stopExtension(extensionId);
-  };
-
   const contextValue: SocketContextType = {
     isConnected,
     socketId,
@@ -99,9 +97,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     emit,
     on,
     off,
-    sendMessage,
-    startExtension,
-    stopExtension,
+    sendMessage
   };
 
   return (

@@ -10,6 +10,59 @@ export interface Extension {
   lastSeen: string;
   userAgent?: string;
   version?: string;
+  guideId?: string;
+  profileId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Guide {
+  _id: string;
+  name: string;
+  platform: string;
+  description: string;
+  steps: any[];
+  userId: string;
+  userEmail: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserProfile {
+  _id: string;
+  name: string;
+  userId: string;
+  userEmail: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  resumeUrl?: string;
+  coverLetterTemplate?: string;
+  skills?: string[];
+  experience?: Array<{
+    title: string;
+    company: string;
+    duration: string;
+    description?: string;
+  }>;
+  education?: Array<{
+    degree: string;
+    school: string;
+    year?: string;
+  }>;
+  preferences?: {
+    minSalary?: number;
+    maxSalary?: number;
+    preferredLocations?: string[];
+    jobTypes?: string[];
+    remotePreferred?: boolean;
+  };
+  customFields?: Record<string, any>;
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +87,7 @@ export interface UrlHistoryItem {
 export interface UrlHistoryParams {
   limit?: number;
   offset?: number;
+  extensionId?: string;
 }
 
 class ApiService {
@@ -41,32 +95,18 @@ class ApiService {
 
   constructor() {
     const baseURL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
-    
+
     this.axiosInstance = axios.create({
       baseURL,
       headers: {
-        'Content-Type': 'application/json',
-      },
+        'Content-Type': 'application/json'
+      }
     });
 
     this.setupInterceptors();
-    this.loadToken();
   }
 
   private setupInterceptors() {
-    // Request interceptor to add auth token
-    this.axiosInstance.interceptors.request.use(
-      (config) => {
-        const token = this.getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    // Response interceptor to handle API response format
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse<IApiResponse>) => {
         const { data } = response;
@@ -82,19 +122,6 @@ class ApiService {
     );
   }
 
-  private getToken(): string | null {
-    const user = localStorage.getItem('user');
-    if (user) {
-      const userData = JSON.parse(user);
-      return userData.token;
-    }
-    return null;
-  }
-
-  private loadToken() {
-    // Token is loaded automatically via interceptor
-  }
-
   async getExtensions(): Promise<Extension[]> {
     return this.axiosInstance.get('/api/extensions');
   }
@@ -107,21 +134,13 @@ class ApiService {
     return this.axiosInstance.delete(`/api/extensions/${extensionId}`);
   }
 
-  // Update token when user logs in
-  updateToken(_token: string) {
-    // Token is managed automatically via localStorage
-  }
-
-  // Clear token when user logs out
-  clearToken() {
-    // Token is managed automatically via localStorage
-  }
-
-  async createActionOrder(extensionId: string, actionType: string, actionConfig: any) {
+  async createActionOrder(
+    extensionId: string,
+    params: { query: string; location: string; sort: string; fromage: string; sitename?: string }
+  ) {
     return this.axiosInstance.post('/api/action-orders', {
       extensionId,
-      actionType,
-      actionConfig
+      ...params
     });
   }
 
@@ -132,6 +151,54 @@ class ApiService {
 
   async getActionOrder(orderId: string) {
     return this.axiosInstance.get(`/api/action-orders/${orderId}`);
+  }
+
+  async updateExtension(extensionId: string, data: { guideId?: string | null; profileId?: string | null }) {
+    return this.axiosInstance.put(`/api/extensions/${extensionId}`, data);
+  }
+
+  async getGuides(): Promise<Guide[]> {
+    return this.axiosInstance.get('/api/guides');
+  }
+
+  async getGuide(guideId: string) {
+    return this.axiosInstance.get(`/api/guides/${guideId}`);
+  }
+
+  async createGuide(data: Partial<Guide>) {
+    return this.axiosInstance.post('/api/guides', data);
+  }
+
+  async updateGuide(guideId: string, data: Partial<Guide>) {
+    return this.axiosInstance.put(`/api/guides/${guideId}`, data);
+  }
+
+  async deleteGuide(guideId: string) {
+    return this.axiosInstance.delete(`/api/guides/${guideId}`);
+  }
+
+  async getPlatformGuides(platform: string) {
+    return this.axiosInstance.get(`/api/guides/platform/${platform}`);
+  }
+
+  async getProfiles(): Promise<UserProfile[]> {
+    return this.axiosInstance.get('/api/profiles');
+  }
+
+  async getProfile(profileId: string) {
+    return this.axiosInstance.get(`/api/profiles/${profileId}`);
+  }
+
+  async createProfile(data: Partial<UserProfile>) {
+    return this.axiosInstance.post('/api/profiles', data);
+  }
+
+  async updateProfile(profileId: string, data: Partial<UserProfile>) {
+    return this.axiosInstance.put(`/api/profiles/${profileId}`, data);
+  }
+
+  async deleteProfile(profileId: string) {
+    return this.axiosInstance.delete(`/api/profiles/${profileId}`);
   }
 }
 

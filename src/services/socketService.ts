@@ -7,23 +7,55 @@ export interface SocketMessage {
 }
 
 export interface SocketEvents {
-  'frontend:connect': (data: { userId: string; email: string }) => void;
-  'frontend:connected': (data: { message: string; socketId: string; userId: string }) => void;
+  'frontend:connect': () => void;
+  'frontend:connected': (data: { message: string; socketId: string }) => void;
   'frontend:message': (data: SocketMessage) => void;
-  'backend:response': (data: { message: string; originalData?: any; userId?: string; extensionId?: string }) => void;
+  'backend:response': (data: { message: string; originalData?: unknown }) => void;
   'backend:error': (data: { message: string; error: string }) => void;
   'extension:status': (data: { isConnected: boolean; currentUrl?: string; lastSeen?: number; extensionId?: string }) => void;
-  'extension:status_list': (data: { extensions: Array<{ extensionId: string; isActive: boolean; lastSeen: Date; version?: string; userAgent?: string; isOnline?: boolean; currentUrl?: string }> }) => void;
+  'extension:status_list': (data: {
+    extensions: Array<{
+      extensionId: string;
+      isRunning: boolean;
+      lastSeen: number;
+      version?: string;
+      userAgent?: string;
+      isOnline?: boolean;
+      currentUrl?: string;
+    }>;
+  }) => void;
   'extension:activation_update': (data: { extensionId: string; isActive: boolean; timestamp: number }) => void;
   'extension:running_update': (data: { extensionId: string; isRunning: boolean; timestamp: number }) => void;
   'extension:online_status': (data: { extensionId: string; isOnline: boolean; timestamp: number }) => void;
   'extension:heartbeat': (data: { extensionId: string; isOnline: boolean; lastSeen: number }) => void;
   'extension:url_update': (data: { url: string; timestamp: number }) => void;
   'extension:url_change': (data: { extensionId: string; url: string; previousUrl?: string; title?: string; tabId?: number; timestamp: number; type: string }) => void;
-  'action:result': (data: { orderId: string; extensionId: string; actionType: string; actionConfig?: any; status: string; result?: any; error?: string; executedAt?: string; completedAt?: string }) => void;
+  'action:result': (data: {
+    orderId: string;
+    extensionId: string;
+    status: string;
+    patchedJobCount?: number;
+    resultsCount?: number;
+    error?: string;
+    completedAt?: string;
+  }) => void;
+  'action:job_result': (data: {
+    orderId: string;
+    extensionId: string;
+    jobId: string;
+    patchedJobCount?: number;
+    resultsCount?: number;
+  }) => void;
   'action:order_sent': (data: { message: string; orderId: string; extensionId: string }) => void;
-  'user:authenticate': (data: { userId: string; email: string }) => void;
-  'user:authenticated': (data: { message: string; userId: string; email: string }) => void;
+}
+
+export interface IndeedOrderPayload {
+  query: string;
+  location: string;
+  sort: string;
+  fromage: string;
+  /** Optional; backend defaults to `indeed`. */
+  sitename?: string;
 }
 
 class SocketService {
@@ -41,12 +73,12 @@ class SocketService {
     this.off = this.off.bind(this);
   }
 
-  connect(serverUrl: string, token: string): Promise<void> {
+  connect(serverUrl: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         this.socket = io(serverUrl, {
           auth: {
-            token: token
+            dashboard: true
           },
           transports: ['websocket', 'polling'],
           timeout: 20000,
@@ -57,13 +89,9 @@ class SocketService {
           console.log('Socket connected:', this.socket?.id);
           this.isConnected = true;
           this.reconnectAttempts = 0;
-          
-          // Emit frontend connection event
-          this.emit('frontend:connect', {
-            userId: this.getUserIdFromToken(token),
-            email: this.getEmailFromToken(token)
-          });
-          
+
+          this.emit('frontend:connect');
+
           resolve();
         });
 
@@ -98,7 +126,6 @@ class SocketService {
         this.socket.on('extension:url_change', (data) => {
           console.log('Extension URL change:', data);
         });
-
       } catch (error) {
         console.error('Failed to create socket connection:', error);
         reject(error);
@@ -110,9 +137,9 @@ class SocketService {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-      
+
       console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      
+
       setTimeout(() => {
         if (this.socket && !this.isConnected) {
           this.socket.connect();
@@ -132,15 +159,14 @@ class SocketService {
     }
   }
 
-  emit<K extends keyof SocketEvents>(event: K, data: Parameters<SocketEvents[K]>[0]): void {
+  emit<K extends keyof SocketEvents>(event: K, ...args: Parameters<SocketEvents[K]>): void {
     if (this.socket && this.isConnected) {
-      this.socket.emit(event, data);
+      (this.socket.emit as (...a: unknown[]) => void)(event, ...args);
     } else {
       console.warn('Socket not connected, cannot emit event:', event);
     }
   }
 
-  // Send a typed message through frontend:message channel
   sendMessage(type: string, data: any): void {
     if (this.socket && this.isConnected) {
       const message: SocketMessage = {
@@ -174,56 +200,29 @@ class SocketService {
     return this.socket?.id;
   }
 
-  private getUserIdFromToken(token: string): string {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.userId || payload.sub || '';
-    } catch (error) {
-      console.error('Error parsing token for userId:', error);
-      return '';
-    }
-  }
-
-  private getEmailFromToken(token: string): string {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.email || '';
-    } catch (error) {
-      console.error('Error parsing token for email:', error);
-      return '';
-    }
-  }
-
-  // Request extension status from backend
   requestExtensionStatus(): void {
     this.sendMessage('request_extension_status', {});
   }
 
-  // Authenticate user
-  authenticateUser(userId: string, email: string): void {
-    this.emit('user:authenticate', { userId, email });
-  }
-
-  // Start extension
-  startExtension(extensionId: string): void {
-    this.sendMessage('start_extension', { extensionId });
-  }
-
-  // Stop extension
-  stopExtension(extensionId: string): void {
-    this.sendMessage('stop_extension', { extensionId });
-  }
-
-  // Send action order via socket
-  sendActionOrder(extensionId: string, actionType: string, actionConfig: any): void {
+  sendIndeedOrder(extensionId: string, params: IndeedOrderPayload): void {
     this.sendMessage('create_action_order', {
       extensionId,
-      actionType,
-      actionConfig
+      ...params
     });
+  }
+
+  stopOrder(extensionId: string, orderId: string): void {
+    this.sendMessage('stop_order', { extensionId, orderId });
+  }
+
+  resumeOrder(extensionId: string, orderId: string): void {
+    this.sendMessage('resume_order', { extensionId, orderId });
+  }
+
+  cancelOrder(extensionId: string, orderId: string): void {
+    this.sendMessage('cancel_order', { extensionId, orderId });
   }
 }
 
-// Create singleton instance
 const socketService = new SocketService();
 export default socketService;

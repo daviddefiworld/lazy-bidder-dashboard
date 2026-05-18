@@ -1,97 +1,84 @@
 # LazyBidder Dashboard
 
-A modern web application with authentication features built using React, TypeScript, Vite, and Tailwind CSS.
+A React + TypeScript app (Vite, Tailwind) with auth and a real-time **Socket.io** connection to the LazyBidder backend.
 
 ## Features
 
-- 🔐 **Authentication System**
-  - User login with email and password
-  - User registration with form validation
-  - Protected routes and authentication guards
-  - Persistent login sessions using localStorage
-
-- 🎨 **Modern UI**
-  - Responsive design with Tailwind CSS
-  - Clean and intuitive user interface
-  - Form validation with React Hook Form and Zod
-  - Loading states and error handling
-
-- 🛡️ **Type Safety**
-  - Full TypeScript support
-  - Type-safe authentication context
-  - Form validation schemas
+- **Authentication** — login, JWT session, protected routes (`ProtectedRoute`, `AuthContext`)
+- **Socket context** — `SocketProvider` / `SocketContext` for live backend communication
+- **Script console** — main authenticated surface (`ScriptConsolePage`)
+- **Forms** — React Hook Form + Zod where used
+- **TypeScript** — typed API and auth helpers
 
 ## Tech Stack
 
 - **Frontend**: React 18, TypeScript
-- **Build Tool**: Vite
+- **Build**: Vite
 - **Styling**: Tailwind CSS
 - **Routing**: React Router DOM
-- **Forms**: React Hook Form with Zod validation
-- **State Management**: React Context API
-- **Package Manager**: Yarn
+- **Real-time**: Socket.io client
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js (v16 or higher)
-- Yarn package manager
+- npm or Yarn
 
 ### Installation
 
 1. Clone the repository
 2. Install dependencies:
+
    ```bash
-   yarn install
+   npm install
    ```
+
+   or: `yarn install`
 
 3. Start the development server:
+
    ```bash
-   yarn dev
+   npm run dev
    ```
 
-4. Open your browser and navigate to `http://localhost:5173`
+   or: `yarn dev`
+
+4. Open `http://localhost:5173` (or the URL Vite prints)
 
 ### Available Scripts
 
-- `yarn dev` - Start development server
-- `yarn build` - Build for production
-- `yarn preview` - Preview production build
-- `yarn lint` - Run ESLint
+- `npm run dev` / `yarn dev` — development server
+- `npm run build` / `yarn build` — production build
+- `npm run preview` / `yarn preview` — preview production build
+- `npm run lint` / `yarn lint` — ESLint
 
 ## Project Structure
 
-```
+```text
 src/
-├── components/          # Reusable components
-│   └── ProtectedRoute.tsx
-├── contexts/           # React contexts
-│   └── AuthContext.tsx
-├── pages/              # Page components
-│   ├── LoginPage.tsx
-│   ├── SignupPage.tsx
-│   └── DashboardPage.tsx
-├── types/              # TypeScript type definitions
-│   └── auth.ts
-├── App.tsx             # Main app component
-├── main.tsx            # Application entry point
-└── index.css           # Global styles
+├── components/          # ProtectedRoute, LoadingSpinner, ErrorAlert
+├── contexts/            # AuthContext, SocketContext
+├── pages/               # LoginPage, ScriptConsolePage
+├── services/            # apiService, socketService
+├── types/               # auth, api, env
+├── utils/               # formatters, urlUtils
+├── App.tsx
+├── main.tsx
+└── index.css
 ```
 
 ## Authentication Flow
 
-1. **Login/Signup**: Users can authenticate via the login or signup pages
-2. **Protected Routes**: Authenticated users can access the dashboard
-3. **Session Management**: User sessions are persisted in localStorage
-4. **Automatic Redirects**: Unauthenticated users are redirected to login
+1. User signs in on **`/login`**
+2. JWT and user info are stored (see `AuthContext` for details)
+3. **`/`** renders **`ScriptConsolePage`** inside **`ProtectedRoute`**
+4. Unauthenticated visitors are redirected to **`/login`**
 
 ## Development Notes
 
-- The authentication system uses mock data for demonstration purposes
-- In a production environment, you would integrate with a real authentication API
-- Form validation is handled by Zod schemas for type safety
-- The app follows React best practices with functional components and hooks
+- Point the app at your backend URL and ensure CORS/socket options match your environment
+- See repo root **`SOCKET_ARCHITECTURE.md`** for socket event naming
 
 ## License
 

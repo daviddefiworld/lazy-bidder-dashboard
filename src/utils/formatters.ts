@@ -7,23 +7,53 @@ export const formatDate = (date: Date | string): string => {
   return d.toLocaleString();
 };
 
+export const formatTime = (date: Date | string | number): string => {
+  const d = typeof date === 'number' ? new Date(date) : new Date(date);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
+export const formatRelativeTime = (timestamp: number | string): string => {
+  const ms = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp;
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return formatDate(new Date(ms));
+};
+
 export const formatExtensionId = (extensionId: string): string => {
-  return `${extensionId.slice(0, 8)}...`;
+  if (extensionId.length <= 12) return extensionId;
+  return `${extensionId.slice(0, 8)}…${extensionId.slice(-4)}`;
 };
 
 export const getTypeColor = (type: string): string => {
   switch (type) {
-    case 'page_load': return 'bg-blue-100 text-blue-800';
-    case 'spa_navigation': return 'bg-green-100 text-green-800';
-    case 'tab_change': return 'bg-yellow-100 text-yellow-800';
-    default: return 'bg-gray-100 text-gray-800';
+    case 'page_load':
+      return 'bg-blue-50 text-blue-700 ring-blue-600/20';
+    case 'spa_navigation':
+      return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20';
+    case 'tab_change':
+      return 'bg-amber-50 text-amber-700 ring-amber-600/20';
+    default:
+      return 'bg-slate-50 text-slate-600 ring-slate-500/20';
   }
 };
 
-export const getStatusColor = (isRunning: boolean): string => {
-  return isRunning ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-};
-
-export const getConnectionColor = (isOnline: boolean): string => {
-  return isOnline ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800';
+export const getOrderStatusColor = (status: string): string => {
+  switch (status) {
+    case 'completed':
+      return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20';
+    case 'executing':
+      return 'bg-blue-50 text-blue-700 ring-blue-600/20';
+    case 'stopped':
+      return 'bg-orange-50 text-orange-700 ring-orange-600/20';
+    case 'pending':
+      return 'bg-amber-50 text-amber-700 ring-amber-600/20';
+    case 'failed':
+      return 'bg-red-50 text-red-700 ring-red-600/20';
+    case 'cancelled':
+      return 'bg-slate-50 text-slate-600 ring-slate-500/20';
+    default:
+      return 'bg-slate-50 text-slate-600 ring-slate-500/20';
+  }
 };
