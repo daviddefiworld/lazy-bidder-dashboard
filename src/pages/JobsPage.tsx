@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import PageHeader from '../components/layout/PageHeader';
 import EmptyState from '../components/crawl/EmptyState';
-import JobsFilterBar from '../components/crawl/JobsFilterBar';
+import JobsFilterBar, { DEFAULT_POSTED_WITHIN } from '../components/crawl/JobsFilterBar';
+import ListLayoutToggle from '../components/crawl/ListLayoutToggle';
+import { RefreshIconButton } from '../components/crawl/ListPageIcons';
 import PaginationBar from '../components/crawl/PaginationBar';
 import RatingStars from '../components/crawl/RatingStars';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -9,8 +12,14 @@ import apiService from '../services/apiService';
 import type { IndeedJob, JobListSort } from '../types/crawl';
 import { jobDetailPath, jsonItemsToLabels } from '../utils/crawlUtils';
 import { formatJobPublished } from '../utils/formatters';
+import { parseListView, stickyFilterPanelClass, type ListViewLayout } from '../components/crawl/listPageStyles';
+import {
+  mergeJobsUrlWithPreferences,
+  saveJobsListPreferences
+} from '../utils/jobsListPreferences';
 
 const PAGE_SIZE = 25;
+const DEFAULT_VIEW: ListViewLayout = 'list';
 
 type JobsUrlState = {
   q: string;
@@ -18,6 +27,7 @@ type JobsUrlState = {
   sort: JobListSort;
   posted: string;
   skills: string;
+  view: ListViewLayout;
 };
 
 function readJobsUrlState(params: URLSearchParams): JobsUrlState {
@@ -27,8 +37,9 @@ function readJobsUrlState(params: URLSearchParams): JobsUrlState {
     page: Math.max(1, parseInt(params.get('page') ?? '1', 10) || 1),
     sort:
       sortRaw === 'relevant' ? 'relevant' : sortRaw === 'title' ? 'title' : 'date',
-    posted: params.get('posted') ?? '',
-    skills: params.get('skills') ?? ''
+    posted: params.get('posted') ?? DEFAULT_POSTED_WITHIN,
+    skills: params.get('skills') ?? '',
+    view: parseListView(params.get('view'), DEFAULT_VIEW)
   };
 }
 
@@ -38,19 +49,25 @@ function writeJobsUrlState(state: JobsUrlState): URLSearchParams {
   if (state.page > 1) next.set('page', String(state.page));
   if (state.sort === 'relevant') next.set('sort', 'relevant');
   if (state.sort === 'title') next.set('sort', 'title');
-  if (state.posted.trim()) next.set('posted', state.posted.trim());
+  next.set('posted', state.posted);
   if (state.skills.trim()) next.set('skills', state.skills.trim());
+  if (state.view !== DEFAULT_VIEW) next.set('view', state.view);
   return next;
+}
+
+function readInitialJobsFilters() {
+  return mergeJobsUrlWithPreferences(new URLSearchParams(window.location.search));
 }
 
 const JobsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const url = readJobsUrlState(searchParams);
 
-  const [searchInput, setSearchInput] = useState(url.q);
-  const [skillsInput, setSkillsInput] = useState(url.skills);
-  const [sort, setSort] = useState<JobListSort>(url.sort);
-  const [postedWithin, setPostedWithin] = useState(url.posted);
+  const [searchInput, setSearchInput] = useState(() => readInitialJobsFilters().q);
+  const [skillsInput, setSkillsInput] = useState(() => readInitialJobsFilters().skills);
+  const [sort, setSort] = useState<JobListSort>(() => readInitialJobsFilters().sort);
+  const [postedWithin, setPostedWithin] = useState(() => readInitialJobsFilters().posted);
+  const [urlReady, setUrlReady] = useState(false);
 
   const debouncedSearch = useDebouncedValue(searchInput, 400);
   const debouncedSkills = useDebouncedValue(skillsInput, 400);
@@ -75,6 +92,41 @@ const JobsPage: React.FC = () => {
     [setSearchParams]
   );
 
+  useLayoutEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefs = mergeJobsUrlWithPreferences(params);
+    const fromUrl = readJobsUrlState(params);
+
+    setSearchInput(prefs.q);
+    setSkillsInput(prefs.skills);
+    setSort(prefs.sort);
+    setPostedWithin(prefs.posted);
+
+    const target: JobsUrlState = {
+      q: prefs.q,
+      page: fromUrl.page,
+      sort: prefs.sort,
+      posted: prefs.posted,
+      skills: prefs.skills,
+      view: prefs.view
+    };
+    const next = writeJobsUrlState(target);
+    if (next.toString() !== params.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+    setUrlReady(true);
+  }, [setSearchParams]);
+
+  useEffect(() => {
+    saveJobsListPreferences({
+      q: url.q,
+      skills: url.skills,
+      sort: url.sort,
+      posted: url.posted,
+      view: url.view
+    });
+  }, [url.q, url.skills, url.sort, url.posted, url.view]);
+
   useEffect(() => {
     const filtersChanged =
       debouncedSearch !== url.q ||
@@ -88,9 +140,10 @@ const JobsPage: React.FC = () => {
       page: 1,
       sort,
       posted: postedWithin,
-      skills: debouncedSkills
+      skills: debouncedSkills,
+      view: url.view
     });
-  }, [debouncedSearch, debouncedSkills, sort, postedWithin, url.q, url.skills, url.posted, url.sort, syncUrl]);
+  }, [debouncedSearch, debouncedSkills, sort, postedWithin, url.q, url.skills, url.posted, url.sort, url.view, syncUrl]);
 
   useEffect(() => {
     if (sort === 'relevant' && !url.q.trim()) {
@@ -123,8 +176,9 @@ const JobsPage: React.FC = () => {
   }, [offset, url.q, url.skills, url.posted, effectiveSort]);
 
   useEffect(() => {
+    if (!urlReady) return;
     void load();
-  }, [load]);
+  }, [load, urlReady]);
 
   const handlePageChange = (page: number) => {
     syncUrl({
@@ -132,31 +186,53 @@ const JobsPage: React.FC = () => {
       page,
       sort: url.sort,
       posted: url.posted,
-      skills: url.skills
+      skills: url.skills,
+      view: url.view
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const hasActiveFilters = Boolean(url.q || url.skills || url.posted || url.sort === 'relevant');
+  const handleViewChange = (view: ListViewLayout) => {
+    syncUrl({
+      q: url.q,
+      page: url.page,
+      sort: url.sort,
+      posted: url.posted,
+      skills: url.skills,
+      view
+    });
+  };
+
+  const hasActiveFilters = Boolean(
+    url.q ||
+      url.skills ||
+      (url.posted && url.posted !== DEFAULT_POSTED_WITHIN) ||
+      url.sort === 'relevant'
+  );
 
   const clearFilters = () => {
     setSearchInput('');
     setSkillsInput('');
     setPostedWithin('');
     setSort('date');
-    syncUrl({ q: '', page: 1, sort: 'date', posted: '', skills: '' });
+    syncUrl({ q: '', page: 1, sort: 'date', posted: '', skills: '', view: url.view });
   };
 
-  return (
-    <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-8">
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Jobs</h2>
-        <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-          Browse crawled listings. Sort by date or relevance, filter by posting window and skills.
-        </p>
-      </div>
+  const listClass = loading ? 'opacity-60 pointer-events-none' : '';
 
-      <div className="sticky top-[3.5rem] z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 mb-6 bg-slate-50/95 backdrop-blur border-b border-slate-200/80 sm:border-0 sm:rounded-xl sm:bg-white sm:shadow-sm sm:ring-1 sm:ring-slate-200/60">
+  return (
+    <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">
+      <PageHeader
+        title="Jobs"
+        actions={
+          <>
+            <ListLayoutToggle value={url.view} onChange={handleViewChange} />
+            <RefreshIconButton onClick={() => void load()} disabled={loading} />
+          </>
+        }
+      />
+
+      <div className={stickyFilterPanelClass}>
         <JobsFilterBar
           search={searchInput}
           onSearchChange={setSearchInput}
@@ -166,8 +242,6 @@ const JobsPage: React.FC = () => {
           onPostedWithinChange={setPostedWithin}
           skills={skillsInput}
           onSkillsChange={setSkillsInput}
-          onRefresh={() => void load()}
-          loading={loading}
           hasActiveFilters={hasActiveFilters}
           onClearFilters={clearFilters}
         />
@@ -214,11 +288,19 @@ const JobsPage: React.FC = () => {
             />
           </div>
 
-          <div className={`space-y-3 ${loading ? 'opacity-60 pointer-events-none' : ''}`}>
-            {items.map((job) => (
-              <JobRow key={job.job_id} job={job} highlightSkills={url.skills} />
-            ))}
-          </div>
+          {url.view === 'cards' ? (
+            <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 ${listClass}`}>
+              {items.map((job) => (
+                <JobCard key={job.job_id} job={job} highlightSkills={url.skills} />
+              ))}
+            </div>
+          ) : (
+            <div className={`space-y-3 ${listClass}`}>
+              {items.map((job) => (
+                <JobRow key={job.job_id} job={job} highlightSkills={url.skills} />
+              ))}
+            </div>
+          )}
 
           <div className="mt-6">
             <PaginationBar
@@ -232,6 +314,61 @@ const JobsPage: React.FC = () => {
         </>
       )}
     </main>
+  );
+};
+
+const JobCard: React.FC<{ job: IndeedJob; highlightSkills?: string }> = ({ job, highlightSkills }) => {
+  const location =
+    job.location_short || job.location_long || [job.city, job.admin1_code].filter(Boolean).join(', ');
+  const occupations = jsonItemsToLabels(job.occupations_json).slice(0, 3);
+  const published = formatJobPublished(job.date_published);
+
+  return (
+    <Link
+      to={jobDetailPath(job.job_id)}
+      className="group flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-primary-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 h-full"
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className="text-base font-semibold text-slate-900 group-hover:text-primary-800 line-clamp-2 min-w-0">
+          {job.title || job.normalized_title || 'Untitled job'}
+        </h3>
+        {job.expired === 1 ? (
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            Expired
+          </span>
+        ) : null}
+      </div>
+      <p className="text-sm font-medium text-slate-700 line-clamp-1">{job.company_name || 'Unknown company'}</p>
+      {location ? <p className="text-sm text-slate-500 mt-0.5 line-clamp-1">{location}</p> : null}
+      {occupations.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {occupations.map((label) => (
+            <span
+              key={label}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                highlightSkills && label.toLowerCase().includes(highlightSkills.trim().toLowerCase())
+                  ? 'bg-primary-50 text-primary-800 ring-1 ring-primary-200'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-auto pt-4 flex items-center justify-between gap-2 text-xs text-slate-500">
+        {published ? (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+            {published.relative ?? published.label}
+          </span>
+        ) : (
+          <span className="text-slate-400 italic">No date</span>
+        )}
+        {job.company_review_rating != null ? (
+          <RatingStars rating={job.company_review_rating} reviewCount={job.company_review_count} />
+        ) : null}
+      </div>
+    </Link>
   );
 };
 

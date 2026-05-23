@@ -94,7 +94,7 @@ const JobCompanySidebarCard: React.FC<JobCompanySidebarCardProps> = ({
             ) : null}
             {companyPage ? (
               <a
-                href={`https://www.indeed.com/cmp/${companyPage}`}
+                href={`https://www.indeed.com${companyPage}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition"

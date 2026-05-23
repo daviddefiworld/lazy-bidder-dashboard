@@ -48,6 +48,7 @@ export interface SocketEvents {
     resultsCount?: number;
   }) => void;
   'action:order_sent': (data: { message: string; orderId: string; extensionId: string }) => void;
+  'company:analyzer_updated': (data: { platform: string; companypage: string; orderId?: string }) => void;
 }
 
 export interface IndeedOrderPayload {

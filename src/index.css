@@ -5,6 +5,11 @@
 @layer base {
   html {
     font-family: 'Inter', system-ui, sans-serif;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    overflow-x: clip;
   }
 }
 
@@ -45,5 +50,25 @@
 
   .job-markdown > *:last-child {
     margin-bottom: 0;
+  }
+
+  .content-panel {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden w-full;
+  }
+
+  .content-panel-header {
+    @apply border-b;
+  }
+
+  .content-panel-body {
+    @apply px-5 py-5 sm:px-6 sm:py-5;
+  }
+
+  .content-panel-empty {
+    @apply rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-8 sm:px-6 text-center;
+  }
+
+  .content-panel-empty--violet {
+    @apply border-violet-200 bg-violet-50/40;
   }
 }

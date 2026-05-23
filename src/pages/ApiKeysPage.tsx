@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import PageHeader from '../components/layout/PageHeader';
 import apiService, { type ApiKeyRow, type CreateApiKeyResponse } from '../services/apiService';
 import { formatDate } from '../utils/formatters';
 
@@ -60,15 +61,7 @@ const ApiKeysPage: React.FC = () => {
 
   return (
     <div>
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-slate-900 tracking-tight">API keys</h3>
-        <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-          Use keys with{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">Authorization: Bearer &lt;key&gt;</code> or{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">X-API-Key</code> on REST requests. Each key is
-          shown in full only once when created.
-        </p>
-      </div>
+      <PageHeader title="API keys" as="h2" />
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>

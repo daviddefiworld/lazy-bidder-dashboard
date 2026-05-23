@@ -9,6 +9,8 @@ import type {
   IndeedJob,
   JobListParams
 } from '../types/crawl';
+import type { ActionOrder } from '../types/actionOrder';
+import type { CompanyAnalyzer, GrokResearchStartResult } from '../types/companyResearch';
 
 export interface Extension {
   _id: string;
@@ -203,7 +205,7 @@ class ApiService {
     return this.axiosInstance.get('/api/action-orders', { params });
   }
 
-  async getActionOrder(orderId: string) {
+  async getActionOrder(orderId: string): Promise<ActionOrder> {
     return this.axiosInstance.get(`/api/action-orders/${orderId}`);
   }
 
@@ -278,6 +280,34 @@ class ApiService {
   async getCrawlCompany(platform: string, companypage: string): Promise<IndeedCompany> {
     return this.axiosInstance.get('/api/admin/crawl/companies/lookup', {
       params: { platform, companypage }
+    });
+  }
+
+  async getCompanyAnalyzer(
+    platform: string,
+    companypage: string
+  ): Promise<CompanyAnalyzer | null> {
+    return this.axiosInstance.get('/api/admin/crawl/companies/analyzer', {
+      params: { platform, companypage }
+    });
+  }
+
+  async requestCompanyGrokResearch(
+    platform: string,
+    companypage: string,
+    extensionId?: string
+  ): Promise<GrokResearchStartResult> {
+    return this.axiosInstance.post('/api/admin/crawl/companies/grok-research', {
+      platform,
+      companypage,
+      ...(extensionId ? { extensionId } : {})
+    });
+  }
+
+  async analyzeCompany(platform: string, companypage: string): Promise<CompanyAnalyzer> {
+    return this.axiosInstance.post('/api/admin/crawl/companies/analyze', {
+      platform,
+      companypage
     });
   }
 

@@ -8,10 +8,11 @@ export interface BreadcrumbItem {
 
 interface BreadcrumbsProps {
   items: BreadcrumbItem[];
+  compact?: boolean;
 }
 
-const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items }) => (
-  <nav aria-label="Breadcrumb" className="mb-6">
+const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items, compact }) => (
+  <nav aria-label="Breadcrumb" className={compact ? 'mb-3' : 'mb-6'}>
     <ol className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
       {items.map((item, i) => {
         const last = i === items.length - 1;

@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
+import PageHeader from '../components/layout/PageHeader';
 import ErrorAlert from '../components/ErrorAlert';
 import LoadingSpinner from '../components/LoadingSpinner';
 import apiService from '../services/apiService';
@@ -93,21 +94,15 @@ const AnalyticsPage: React.FC = () => {
 
   return (
     <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Analytics</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Combined jobs per day (deduplicated dashboard data) and raw crawl counts by Indeed vs
-            Glassdoor. Jobs without a publish date or from ignored employers are excluded.
-          </p>
-        </div>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-          Range
+      <PageHeader
+        title="Analytics"
+        actions={
           <select
             className={selectClass}
             value={days}
             onChange={(e) => setDays(Number(e.target.value) as DayRange)}
             disabled={loading}
+            aria-label="Date range"
           >
             {DAY_RANGE_OPTIONS.map((n) => (
               <option key={n} value={n}>
@@ -115,8 +110,8 @@ const AnalyticsPage: React.FC = () => {
               </option>
             ))}
           </select>
-        </label>
-      </div>
+        }
+      />
 
       {error && <ErrorAlert error={error} onDismiss={() => setError(null)} />}
 

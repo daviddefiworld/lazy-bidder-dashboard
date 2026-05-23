@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import PageHeader from '../components/layout/PageHeader';
 import apiService, { type CombineActionResult, type UncombinedCounts } from '../services/apiService';
 
 const btnClass =
@@ -65,14 +66,7 @@ const ActionsPage: React.FC = () => {
 
   return (
     <div>
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-slate-900 tracking-tight">Actions</h3>
-        <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-          Process only rows that are not yet combined (`combined` flag on crawl data). Re-run after
-          new crawls — already-combined rows are skipped. Dashboard lists read from combined
-          collections (run companies first, then jobs).
-        </p>
-      </div>
+      <PageHeader title="Actions" as="h2" />
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-3">

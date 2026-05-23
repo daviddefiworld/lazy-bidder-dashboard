@@ -1,4 +1,5 @@
 import React from 'react';
+import PageHeader from '../components/layout/PageHeader';
 import ExtensionCard from '../components/extensions/ExtensionCard';
 import { useConnectedExtensions } from '../hooks/useConnectedExtensions';
 
@@ -6,23 +7,20 @@ const ExtensionsPage: React.FC = () => {
   const { extensions, loading, refresh, isSocketConnected } = useConnectedExtensions();
 
   return (
-    <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Extensions</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Select an extension to send orders and view history
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={!isSocketConnected}
-          className="self-start sm:self-auto text-sm font-medium px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
-        >
-          Refresh
-        </button>
-      </div>
+    <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6">
+      <PageHeader
+        title="Extensions"
+        actions={
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={!isSocketConnected}
+            className="text-sm font-medium px-4 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
+          >
+            Refresh
+          </button>
+        }
+      />
 
       {!isSocketConnected && (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

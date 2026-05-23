@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import PageHeader from '../components/layout/PageHeader';
 import apiService, { type Extension } from '../services/apiService';
 import { formatRelativeTime } from '../utils/formatters';
 
@@ -41,12 +42,7 @@ const UsersPage: React.FC = () => {
 
   return (
     <div>
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-slate-900 tracking-tight">Users</h3>
-        <p className="text-sm text-slate-500 mt-1">
-          Extension installations registered with the backend (each row is a connected client identity).
-        </p>
-      </div>
+      <PageHeader title="Users" as="h2" />
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>

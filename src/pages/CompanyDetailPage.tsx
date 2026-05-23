@@ -1,24 +1,51 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Breadcrumbs from '../components/crawl/Breadcrumbs';
-import DetailSection from '../components/crawl/DetailSection';
-import HighlightedText from '../components/crawl/HighlightedText';
-import CompanyJobCard from '../components/crawl/CompanyJobCard';
+import CompanyReportTab from '../components/company/CompanyReportTab';
+import CompanyGrokTab from '../components/company/CompanyGrokTab';
+import CompanyJobBoardTab from '../components/company/CompanyJobBoardTab';
+import CompanyReportActions from '../components/company/CompanyReportActions';
+import CompanyJobsStrip from '../components/company/CompanyJobsStrip';
 import RatingStars from '../components/crawl/RatingStars';
 import SearchField from '../components/crawl/SearchField';
-import TagList from '../components/crawl/TagList';
+import CompanyDetailSidebar, {
+  type CompanyDetailView
+} from '../components/company/CompanyDetailSidebar';
+import { ContentPanelLoading } from '../components/ui/ContentPanel';
+import { extractKeyPeopleContacts } from '../utils/contactLinks';
+import { useConnectedExtensions } from '../hooks/useConnectedExtensions';
+import { useSocket } from '../contexts/SocketContext';
 import apiService from '../services/apiService';
+import socketService from '../services/socketService';
 import type { IndeedCompany, IndeedJob } from '../types/crawl';
-import { jsonItemsToLabels } from '../utils/crawlUtils';
-import { formatDate } from '../utils/formatters';
+import type { ActionOrderStatus } from '../types/actionOrder';
+import type { CompanyAnalyzer } from '../types/companyResearch';
+import { formatExtensionId } from '../utils/formatters';
 
-/** Max jobs loaded for horizontal scroll (API cap is 200). */
+const GROK_ORDER_TERMINAL: ActionOrderStatus[] = ['completed', 'failed', 'cancelled'];
+const GROK_ORDER_IN_FLIGHT: ActionOrderStatus[] = ['pending', 'executing'];
+
 const JOBS_FETCH_LIMIT = 200;
 
+const defaultAnalyzer = (platform: string, companypage: string): CompanyAnalyzer => ({
+  platform,
+  companypage,
+  company_name: '',
+  grok: { status: 'idle' },
+  analyze: { status: 'idle' }
+});
+
 const CompanyDetailPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const platform = searchParams.get('platform') ?? '';
   const companypage = searchParams.get('companypage') ?? '';
+  const tabParam = searchParams.get('tab');
+  const activeView: CompanyDetailView =
+    tabParam === 'grok' || tabParam === 'jobboard' ? tabParam : 'report';
+
+  const { isConnected } = useSocket();
+  const { extensions } = useConnectedExtensions();
+  const connectedExtension = extensions[0] ?? null;
 
   const [company, setCompany] = useState<IndeedCompany | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +57,38 @@ const CompanyDetailPage: React.FC = () => {
   const [jobsTotal, setJobsTotal] = useState(0);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState<string | null>(null);
+
+  const [analyzer, setAnalyzer] = useState<CompanyAnalyzer | null>(null);
+  const [analyzerLoading, setAnalyzerLoading] = useState(true);
+  const [analyzeBusy, setAnalyzeBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [lastGrokExtensionId, setLastGrokExtensionId] = useState<string | null>(null);
+  const [trackedGrokOrderId, setTrackedGrokOrderId] = useState<string | null>(null);
+  const [grokOrderStatus, setGrokOrderStatus] = useState<ActionOrderStatus | null>(null);
+  const [grokSubmitting, setGrokSubmitting] = useState(false);
+
+  const setView = (view: CompanyDetailView) => {
+    const next = new URLSearchParams(searchParams);
+    if (view === 'report') next.delete('tab');
+    else next.set('tab', view);
+    setSearchParams(next, { replace: true });
+  };
+
+  const loadAnalyzer = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!platform || !companypage) return;
+      if (!opts?.silent) setAnalyzerLoading(true);
+      try {
+        const data = await apiService.getCompanyAnalyzer(platform, companypage);
+        setAnalyzer(data ?? defaultAnalyzer(platform, companypage));
+      } catch {
+        if (!opts?.silent) setAnalyzer(defaultAnalyzer(platform, companypage));
+      } finally {
+        if (!opts?.silent) setAnalyzerLoading(false);
+      }
+    },
+    [platform, companypage]
+  );
 
   const load = useCallback(async () => {
     if (!platform || !companypage) return;
@@ -48,7 +107,8 @@ const CompanyDetailPage: React.FC = () => {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadAnalyzer();
+  }, [load, loadAnalyzer]);
 
   const loadJobs = useCallback(async () => {
     if (!platform || !companypage) return;
@@ -82,34 +142,177 @@ const CompanyDetailPage: React.FC = () => {
     if (company) void loadJobs();
   }, [company, loadJobs]);
 
-  const jobTitles = useMemo(
-    () => (company ? jsonItemsToLabels(company.job_titles_json) : []),
-    [company]
-  );
-  const jobLocations = useMemo(
-    () => (company ? jsonItemsToLabels(company.job_locations_json) : []),
-    [company]
-  );
-  const faqLabels = useMemo(() => {
-    if (!company) return [];
-    return company.faqs_json
-      .map((item) => {
-        if (typeof item === 'string') return item;
-        if (item && typeof item === 'object') {
-          const o = item as Record<string, unknown>;
-          const q = o.question ?? o.q;
-          const a = o.answer ?? o.a;
-          if (q && a) return `${String(q)} — ${String(a)}`;
-          if (q) return String(q);
-        }
-        return JSON.stringify(item);
-      })
-      .filter(Boolean);
-  }, [company]);
+  useEffect(() => {
+    if (!isConnected || !platform || !companypage) return;
 
-  const filterItems = (items: string[]) => {
-    const q = pageSearch.trim().toLowerCase();
-    return q ? items.filter((i) => i.toLowerCase().includes(q)) : items;
+    const onAnalyzerUpdated = (data: {
+      platform: string;
+      companypage: string;
+      orderId?: string;
+    }) => {
+      if (data.platform !== platform || data.companypage !== companypage) return;
+      void loadAnalyzer({ silent: true });
+    };
+
+    const onActionResult = (data: {
+      orderId: string;
+      status: string;
+      grokResult?: { message: string };
+    }) => {
+      const activeOrderId = trackedGrokOrderId ?? analyzer?.grok.orderId;
+      if (!activeOrderId || data.orderId !== activeOrderId) return;
+      const status = data.status as ActionOrderStatus;
+      if (GROK_ORDER_IN_FLIGHT.includes(status)) {
+        setGrokOrderStatus(status);
+      }
+      if (GROK_ORDER_TERMINAL.includes(status)) {
+        setGrokOrderStatus(status);
+        void loadAnalyzer({ silent: true });
+      }
+    };
+
+    socketService.on('company:analyzer_updated', onAnalyzerUpdated);
+    socketService.on('action:result', onActionResult);
+    return () => {
+      socketService.off('company:analyzer_updated', onAnalyzerUpdated);
+      socketService.off('action:result', onActionResult);
+    };
+  }, [
+    isConnected,
+    platform,
+    companypage,
+    loadAnalyzer,
+    trackedGrokOrderId,
+    analyzer?.grok.orderId
+  ]);
+
+  const grokOrderInFlight =
+    grokSubmitting ||
+    (grokOrderStatus != null && GROK_ORDER_IN_FLIGHT.includes(grokOrderStatus));
+  const grokIsPending = analyzer?.grok.status === 'pending' || grokOrderInFlight;
+
+  useEffect(() => {
+    if (!analyzer?.grok.orderId) return;
+    setTrackedGrokOrderId((cur) => cur ?? analyzer.grok.orderId ?? null);
+    if (analyzer.grok.status === 'pending' && grokOrderStatus == null) {
+      setGrokOrderStatus('pending');
+    }
+  }, [analyzer?.grok.orderId, analyzer?.grok.status, grokOrderStatus]);
+
+  useEffect(() => {
+    const orderId = trackedGrokOrderId ?? analyzer?.grok.orderId;
+    const grokDone =
+      analyzer?.grok.status === 'completed' && !!analyzer.grok.text?.trim();
+    if (!orderId || grokDone) return;
+
+    let cancelled = false;
+
+    const pollOrder = async () => {
+      try {
+        const order = await apiService.getActionOrder(orderId);
+        if (cancelled) return;
+        setGrokOrderStatus(order.status);
+        if (GROK_ORDER_IN_FLIGHT.includes(order.status)) {
+          setAnalyzer((prev) => {
+            if (!prev) return prev;
+            if (prev.grok.status === 'pending' && prev.grok.orderId === orderId) return prev;
+            return {
+              ...prev,
+              grok: { status: 'pending', orderId, error: undefined, text: prev.grok.text }
+            };
+          });
+        }
+        if (GROK_ORDER_TERMINAL.includes(order.status)) {
+          void loadAnalyzer({ silent: true });
+        }
+      } catch {
+        /* order poll is best-effort */
+      }
+    };
+
+    void pollOrder();
+    const interval = setInterval(() => void pollOrder(), 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [
+    trackedGrokOrderId,
+    analyzer?.grok.orderId,
+    analyzer?.grok.status,
+    analyzer?.grok.text,
+    loadAnalyzer
+  ]);
+
+  useEffect(() => {
+    if (!grokIsPending || !platform || !companypage) return;
+    const interval = setInterval(() => void loadAnalyzer({ silent: true }), 5000);
+    return () => clearInterval(interval);
+  }, [grokIsPending, platform, companypage, loadAnalyzer]);
+
+  useEffect(() => {
+    if (analyzer?.grok.status === 'completed') {
+      setTrackedGrokOrderId(null);
+      setGrokOrderStatus(null);
+      setGrokSubmitting(false);
+      return;
+    }
+    if (
+      analyzer?.grok.status === 'failed' &&
+      !grokOrderInFlight &&
+      grokOrderStatus !== 'executing' &&
+      grokOrderStatus !== 'pending'
+    ) {
+      setTrackedGrokOrderId(null);
+      setGrokOrderStatus(null);
+      setGrokSubmitting(false);
+    }
+  }, [analyzer?.grok.status, grokOrderInFlight, grokOrderStatus]);
+
+  const handleAskGrok = async () => {
+    if (!platform || !companypage || grokIsPending) return;
+    setActionError(null);
+    setView('grok');
+    setGrokSubmitting(true);
+    setGrokOrderStatus('pending');
+    setAnalyzer((prev) => ({
+      ...(prev ?? defaultAnalyzer(platform, companypage)),
+      grok: { status: 'pending', error: undefined, text: undefined }
+    }));
+    try {
+      const result = await apiService.requestCompanyGrokResearch(
+        platform,
+        companypage,
+        connectedExtension?.extensionId
+      );
+      setAnalyzer(result.analyzer);
+      setTrackedGrokOrderId(result.orderId);
+      setGrokOrderStatus('executing');
+      setLastGrokExtensionId(result.extensionId);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Failed to start Grok research');
+      setGrokSubmitting(false);
+      setGrokOrderStatus(null);
+      void loadAnalyzer({ silent: true });
+    } finally {
+      setGrokSubmitting(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!platform || !companypage) return;
+    setActionError(null);
+    setAnalyzeBusy(true);
+    setView('report');
+    try {
+      const updated = await apiService.analyzeCompany(platform, companypage);
+      setAnalyzer(updated);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'AI analysis failed');
+      void loadAnalyzer();
+    } finally {
+      setAnalyzeBusy(false);
+    }
   };
 
   const handleIgnoredChange = async (ignored: boolean) => {
@@ -130,11 +333,30 @@ const CompanyDetailPage: React.FC = () => {
     }
   };
 
+  const handleRefresh = () => {
+    void load();
+    void loadAnalyzer();
+    void loadJobs();
+  };
+
+  const research = analyzer ?? defaultAnalyzer(platform, companypage);
+  const grokPending = grokIsPending;
+  const grokReady = research.grok.status === 'completed' && !!research.grok.text?.trim();
+  const grokFailed = research.grok.status === 'failed' && !grokPending;
+  const hasReport =
+    research.analyze.status === 'completed' && !!research.analyze.report?.trim();
+  const hasGrokContent =
+    grokReady || grokPending || grokFailed;
+  const contactLinks = useMemo(
+    () => extractKeyPeopleContacts(research.grok.text, research.analyze.report),
+    [research.grok.text, research.analyze.report]
+  );
+
   if (!platform || !companypage) {
     return (
-      <main className="flex-1 max-w-4xl mx-auto px-4 py-16 text-center">
-        <p className="text-slate-600">Missing platform or companypage query parameters.</p>
-        <Link to="/companies" className="mt-4 inline-block text-sm font-medium text-primary-700">
+      <main className="flex-1 max-w-4xl mx-auto px-4 py-16 text-center text-slate-500">
+        <p className="text-sm">Missing platform or companypage query parameters.</p>
+        <Link to="/companies" className="mt-3 inline-block text-sm font-medium text-primary-700">
           ← Companies
         </Link>
       </main>
@@ -159,7 +381,7 @@ const CompanyDetailPage: React.FC = () => {
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error ?? 'Company not found'}
         </div>
-        <Link to="/companies" className="inline-block mt-4 text-sm font-medium text-primary-700">
+        <Link to="/companies" className="inline-block mt-4 text-sm font-medium text-primary-700 hover:text-primary-800">
           ← Back to companies
         </Link>
       </main>
@@ -167,242 +389,203 @@ const CompanyDetailPage: React.FC = () => {
   }
 
   const name = company.company_name || 'Unnamed company';
+  const extensionHint = lastGrokExtensionId
+    ? formatExtensionId(lastGrokExtensionId)
+    : connectedExtension
+      ? formatExtensionId(connectedExtension.extensionId)
+      : undefined;
+
+  const jobBoardPanel = (
+    <CompanyJobBoardTab
+      company={company}
+      jobs={jobs}
+      jobsTotal={jobsTotal}
+      jobsLoading={jobsLoading}
+      jobsError={jobsError}
+      pageSearch={pageSearch}
+      ignoredSaving={ignoredSaving}
+      ignoredError={ignoredError}
+      onIgnoredChange={(v) => void handleIgnoredChange(v)}
+      hideIgnoreBar
+    />
+  );
+
+  const grokPanel = (
+    <CompanyGrokTab
+      grok={research.grok}
+      grokBusy={grokPending}
+      grokOrderStatus={
+        grokOrderStatus === 'pending' || grokOrderStatus === 'executing'
+          ? grokOrderStatus
+          : null
+      }
+      onAskGrok={() => void handleAskGrok()}
+      extensionHint={extensionHint}
+    />
+  );
+
+  const reportPanel = (
+    <div className="space-y-5">
+      <CompanyReportTab
+        companyName={name}
+        analyze={research.analyze}
+        analyzing={analyzeBusy}
+        onAnalyze={() => void handleAnalyze()}
+        grokReady={grokReady}
+        layout="main"
+      />
+      <CompanyJobsStrip
+        jobs={jobs}
+        jobsTotal={jobsTotal}
+        jobsLoading={jobsLoading}
+        jobsError={jobsError}
+        onViewAll={() => setView('jobboard')}
+      />
+    </div>
+  );
+
+  const tabContent = () => {
+    if (analyzerLoading && analyzer === null && activeView !== 'jobboard') {
+      return <ContentPanelLoading label="Loading research…" />;
+    }
+
+    if (activeView === 'grok') {
+      return grokPanel;
+    }
+
+    if (activeView === 'jobboard') {
+      return jobBoardPanel;
+    }
+
+    if (!hasReport) {
+      if (hasGrokContent) return grokPanel;
+      return jobBoardPanel;
+    }
+
+    return reportPanel;
+  };
+
+  const showSearchBar = activeView === 'jobboard';
 
   return (
-    <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 pb-24">
-      <Breadcrumbs
-        items={[
-          { label: 'Companies', to: '/companies' },
-          { label: name }
-        ]}
-      />
+    <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-8 pb-24">
+      <Breadcrumbs items={[{ label: 'Companies', to: '/companies' }, { label: name }]} />
 
-      <header className="mb-8">
-        <span className="inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 capitalize mb-3">
-          {company.platform}
-        </span>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">{name}</h1>
+      <header className="mb-6">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 capitalize">
+            {company.platform}
+          </span>
           {company.ignored ? (
             <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
               Ignored
             </span>
           ) : null}
+          {grokReady ? (
+            <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-800">
+              Grok ready
+            </span>
+          ) : grokPending ? (
+            <span className="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-medium text-violet-600 animate-pulse">
+              Grok in progress
+            </span>
+          ) : null}
+          {hasReport ? (
+            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+              Report ready
+            </span>
+          ) : null}
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-4">
+
+        <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">{name}</h1>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">
+          {company.headquarters ? (
+            <span className="inline-flex items-center gap-1.5">
+              <svg
+                className="h-4 w-4 shrink-0 text-slate-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {company.headquarters}
+            </span>
+          ) : null}
+          {company.employee_range ? (
+            <span>{company.employee_range} employees</span>
+          ) : null}
+          {company.founded != null ? (
+            <span>Founded {company.founded}</span>
+          ) : null}
           {company.rating != null ? (
             <RatingStars rating={company.rating} reviewCount={company.review_count} size="md" />
           ) : null}
-          {company.ceo_approval_pct != null ? (
-            <span className="text-sm text-slate-600">
-              CEO approval <span className="font-semibold">{company.ceo_approval_pct}%</span>
+          {company.jobs_count != null && company.jobs_count > 0 ? (
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700 tabular-nums">
+              {company.jobs_count.toLocaleString()} jobs in database
             </span>
           ) : null}
         </div>
-        <div className="mt-5 flex flex-wrap gap-3">
-          {company.website_url ? (
-            <a
-              href={company.website_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 transition"
-            >
-              Website
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
+
+        <div className="mt-5">
+          <CompanyReportActions
+            company={company}
+            grokPending={grokPending}
+            analyzeBusy={analyzeBusy}
+            grokReady={grokReady}
+            connectedExtension={!!connectedExtension}
+            onAskGrok={() => void handleAskGrok()}
+            onAnalyze={() => void handleAnalyze()}
+            onRefresh={handleRefresh}
+          />
+          {actionError ? (
+            <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
+              {actionError}
+            </p>
           ) : null}
-          <a
-            href={`https://www.indeed.com/cmp/${company.companypage}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-          >
-            View on Indeed
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              void load();
-              if (company) void loadJobs();
-            }}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-          >
-            Refresh
-          </button>
         </div>
       </header>
 
-      <div className="sticky top-[3.5rem] z-10 py-3 mb-6 rounded-xl bg-white/95 backdrop-blur shadow-sm ring-1 ring-slate-200/60 px-4">
-        <SearchField
-          value={pageSearch}
-          onChange={setPageSearch}
-          placeholder="Search roles, locations, FAQs on this page…"
-          id="company-detail-search"
+      {showSearchBar ? (
+        <div className="sticky top-[3.5rem] z-10 py-3 mb-6 rounded-xl bg-white/95 backdrop-blur shadow-sm ring-1 ring-slate-200/60 px-4">
+          <SearchField
+            value={pageSearch}
+            onChange={setPageSearch}
+            placeholder="Search roles, locations, FAQs on this page…"
+            id="company-detail-search"
+          />
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_300px] gap-8 items-start">
+        <div className="space-y-5 min-w-0">{tabContent()}</div>
+
+        <CompanyDetailSidebar
+          company={company}
+          research={research}
+          activeView={activeView}
+          onViewChange={setView}
+          grokPending={grokPending}
+          grokReady={grokReady}
+          connectedExtension={!!connectedExtension}
+          extensionHint={extensionHint}
+          contactLinks={contactLinks}
+          onIgnoredChange={(v) => void handleIgnoredChange(v)}
+          ignoredSaving={ignoredSaving}
+          ignoredError={ignoredError}
         />
       </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Jobs in database" value={company.jobs_count} />
-        <StatCard label="Salaries" value={company.salaries_tab_count} />
-        <StatCard label="Q&A" value={company.qa_tab_count} />
-        <StatCard label="Interviews" value={company.interviews_tab_count} />
-      </div>
-
-      <div className="space-y-5">
-        <DetailSection title={jobsTotal > 0 ? `Jobs (${jobsTotal.toLocaleString()})` : 'Jobs'}>
-          {jobsError ? (
-            <p className="text-sm text-red-700 mb-3">{jobsError}</p>
-          ) : null}
-          {jobsLoading && jobs.length === 0 ? (
-            <div className="-mx-5 flex gap-3 overflow-hidden px-5 pb-1">
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="h-[7.5rem] w-[17rem] shrink-0 animate-pulse rounded-xl bg-slate-100 sm:w-[19rem]"
-                />
-              ))}
-            </div>
-          ) : jobs.length === 0 ? (
-            <p className="text-sm text-slate-400 italic py-2">
-              No jobs from this company in the crawl yet.
-            </p>
-          ) : (
-            <>
-              {jobsTotal > jobs.length ? (
-                <p className="mb-3 text-xs text-slate-500">
-                  Showing {jobs.length.toLocaleString()} of {jobsTotal.toLocaleString()} — scroll
-                  for more
-                </p>
-              ) : null}
-              <div
-                className={`-mx-5 overflow-x-auto px-5 pb-2 scroll-smooth [scrollbar-width:thin] ${
-                  jobsLoading ? 'opacity-60 pointer-events-none' : ''
-                }`}
-              >
-                <ul className="flex w-max gap-3 snap-x snap-mandatory">
-                  {jobs.map((job) => (
-                    <li
-                      key={job.job_id}
-                      className="w-[17rem] shrink-0 snap-start sm:w-[19rem]"
-                    >
-                      <CompanyJobCard job={job} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          )}
-        </DetailSection>
-
-        <DetailSection title="Profile">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            <Meta label="Company page slug" value={company.companypage} mono />
-            <Meta label="Employer key" value={company.employer_key || '—'} mono />
-            <Meta label="Headquarters" value={company.headquarters || '—'} />
-            <Meta label="Size" value={company.employee_range || '—'} />
-            <Meta label="Founded" value={company.founded != null ? String(company.founded) : '—'} />
-            <Meta
-              label="Gig employer"
-              value={company.is_gig_employer === 1 ? 'Yes' : 'No'}
-            />
-            <Meta
-              label="Detail scraped"
-              value={company.detail_scraped_at ? formatDate(company.detail_scraped_at) : '—'}
-            />
-            <Meta
-              label="Last updated"
-              value={company.updatedAt ? formatDate(company.updatedAt) : '—'}
-            />
-          </dl>
-        </DetailSection>
-
-        {filterItems(jobTitles).length > 0 && (
-          <DetailSection title="Job titles on profile">
-            <TagList items={filterItems(jobTitles)} emptyLabel="No titles" />
-          </DetailSection>
-        )}
-
-        {filterItems(jobLocations).length > 0 && (
-          <DetailSection title="Job locations">
-            <TagList items={filterItems(jobLocations)} emptyLabel="No locations" />
-          </DetailSection>
-        )}
-
-        {filterItems(faqLabels).length > 0 && (
-          <DetailSection title="FAQs">
-            <ul className="space-y-3 text-sm text-slate-700">
-              {filterItems(faqLabels).map((faq, i) => (
-                <li key={i} className="rounded-lg bg-slate-50 px-4 py-3 ring-1 ring-slate-100">
-                  <HighlightedText text={faq} query={pageSearch} />
-                </li>
-              ))}
-            </ul>
-          </DetailSection>
-        )}
-
-        {company.similar_companies_json.length > 0 && (
-          <DetailSection title="Similar companies">
-            <TagList items={jsonItemsToLabels(company.similar_companies_json)} />
-          </DetailSection>
-        )}
-
-        {Object.keys(company.payload_json ?? {}).length > 0 && (
-          <DetailSection title="Raw payload">
-            <pre className="overflow-x-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-700 ring-1 ring-slate-200/60 max-h-96">
-              {JSON.stringify(company.payload_json, null, 2)}
-            </pre>
-          </DetailSection>
-        )}
-      </div>
-
-      <section className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
-        <p className="text-xs text-slate-500">
-          Hide this employer&apos;s jobs on the Jobs page
-        </p>
-        <div className="flex items-center gap-2 shrink-0">
-          {ignoredError ? (
-            <span className="text-[11px] text-red-700 max-w-[12rem] truncate" title={ignoredError}>
-              {ignoredError}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            disabled={ignoredSaving}
-            onClick={() => void handleIgnoredChange(!company.ignored)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
-              company.ignored
-                ? 'border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100'
-                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            {ignoredSaving ? 'Saving…' : company.ignored ? 'Unignore' : 'Ignore'}
-          </button>
-        </div>
-      </section>
     </main>
   );
 };
-
-const Meta: React.FC<{ label: string; value: string; mono?: boolean }> = ({
-  label,
-  value,
-  mono
-}) => (
-  <div>
-    <dt className="text-xs font-medium text-slate-500">{label}</dt>
-    <dd className={`mt-0.5 text-slate-900 break-all ${mono ? 'font-mono text-xs' : ''}`}>{value}</dd>
-  </div>
-);
-
-const StatCard: React.FC<{ label: string; value?: number | null }> = ({ label, value }) => (
-  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-center shadow-sm">
-    <p className="text-2xl font-semibold text-slate-900 tabular-nums">
-      {value != null ? value.toLocaleString() : '—'}
-    </p>
-    <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-  </div>
-);
 
 export default CompanyDetailPage;
