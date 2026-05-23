@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import CurrentOrderCard, { type CurrentOrderView } from '../components/orders/CurrentOrderCard';
 import OrderLiveLog from '../components/orders/OrderLiveLog';
 import IndeedScrapePanel from '../components/orders/IndeedScrapePanel';
+import GrokOrderPanel from '../components/orders/GrokOrderPanel';
 import { useConnectedExtensions } from '../hooks/useConnectedExtensions';
 import { useSocket } from '../contexts/SocketContext';
 import apiService from '../services/apiService';
@@ -11,6 +12,7 @@ import type { ActionOrder, LogEntry } from '../types/actionOrder';
 import { formatExtensionId, formatRelativeTime } from '../utils/formatters';
 import { getExtensionActivityLabel, getExtensionActivityTone } from '../utils/extensionUtils';
 import { truncateUrl } from '../utils/urlUtils';
+import { orderGrokMessage, orderPatchedJobCount } from '../utils/orderUtils';
 
 const ACTIVE_STATUSES = new Set(['pending', 'executing', 'stopped']);
 
@@ -34,8 +36,10 @@ function pickCurrentOrder(orders: ActionOrder[], preferredId: string | null): Ac
 }
 
 function jobCountFromOrder(order: ActionOrder | null): number {
-  return order?.patchedJobCount ?? 0;
+  return orderPatchedJobCount(order);
 }
+
+type OrderSection = 'grok' | 'indeed';
 
 const ExtensionDetailPage: React.FC = () => {
   const { extensionId: rawId } = useParams<{ extensionId: string }>();
@@ -44,11 +48,14 @@ const ExtensionDetailPage: React.FC = () => {
   const { extensions } = useConnectedExtensions();
   const extension = extensions.find((e) => e.extensionId === extensionId) ?? null;
 
+  const [orderSection, setOrderSection] = useState<OrderSection>('grok');
   const [query, setQuery] = useState('software');
   const [location, setLocation] = useState('remote');
   const [sort, setSort] = useState('date');
   const [fromage, setFromage] = useState('7');
+  const [grokMessage, setGrokMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [grokError, setGrokError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const activeOrderIdRef = useRef<string | null>(null);
@@ -91,7 +98,7 @@ const ExtensionDetailPage: React.FC = () => {
     const onSent = (data: { orderId: string; extensionId: string }) => {
       if (data.extensionId !== extensionId) return;
       setActiveOrderId(data.orderId);
-      appendLog(makeLog('info', 'Scrape started'));
+      appendLog(makeLog('info', 'Order queued'));
       loadCurrentOrder();
     };
 
@@ -102,19 +109,34 @@ const ExtensionDetailPage: React.FC = () => {
       patchedJobCount?: number;
       resultsCount?: number;
       error?: string;
+      grokResult?: { message: string; conversationId?: string };
     }) => {
       if (data.extensionId !== extensionId) return;
       const jobCount = data.patchedJobCount ?? data.resultsCount;
       const level = data.status === 'completed' ? 'success' : data.status === 'failed' ? 'error' : 'info';
-      const detail =
-        data.status === 'completed' ? `${jobCount ?? 0} jobs saved` : data.error;
-      appendLog(makeLog(level, `Scrape ${data.status}`, detail));
+      let summary = `Order ${data.status}`;
+      let detail: string | undefined = data.error;
+      if (data.grokResult?.message) {
+        summary = `Grok ${data.status}`;
+        detail =
+          data.status === 'completed'
+            ? data.grokResult.message.length > 280
+              ? `${data.grokResult.message.slice(0, 280)}…`
+              : data.grokResult.message
+            : data.error;
+      } else if (data.status === 'completed' && !data.grokResult) {
+        summary = `Scrape ${data.status}`;
+        detail = `${jobCount ?? 0} jobs saved`;
+      }
+      appendLog(makeLog(level, summary, detail));
       if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
         setActiveOrderId((cur) => (cur === data.orderId ? null : cur));
         setCurrentOrder((cur) => (cur?.orderId === data.orderId ? null : cur));
       } else if (typeof jobCount === 'number') {
         setCurrentOrder((cur) =>
-          cur?.orderId === data.orderId ? { ...cur, patchedJobCount: jobCount } : cur
+          cur?.orderId === data.orderId
+            ? { ...cur, output: { ...cur.output, patchedJobCount: jobCount } }
+            : cur
         );
       }
       loadCurrentOrder();
@@ -130,7 +152,9 @@ const ExtensionDetailPage: React.FC = () => {
       const jobCount = data.patchedJobCount ?? data.resultsCount;
       if (typeof jobCount === 'number') {
         setCurrentOrder((cur) =>
-          cur?.orderId === data.orderId ? { ...cur, patchedJobCount: jobCount } : cur
+          cur?.orderId === data.orderId
+            ? { ...cur, output: { ...cur.output, patchedJobCount: jobCount } }
+            : cur
         );
       }
     };
@@ -151,6 +175,8 @@ const ExtensionDetailPage: React.FC = () => {
     return {
       orderId: currentOrder.orderId,
       extensionId: currentOrder.extensionId,
+      sitename: currentOrder.sitename,
+      message: orderGrokMessage(currentOrder),
       status: currentOrder.status,
       patchedJobCount: jobCountFromOrder(currentOrder),
       error: currentOrder.error,
@@ -196,11 +222,31 @@ const ExtensionDetailPage: React.FC = () => {
     appendLog(makeLog('info', `Sending scrape: ${query} · ${location}`));
   };
 
+  const runGrokOrder = () => {
+    setGrokError(null);
+    if (!extensionId) return;
+    const text = grokMessage.trim();
+    if (!text) {
+      setGrokError('Enter a message to send to Grok.');
+      return;
+    }
+    if (!socketService.getConnectionStatus()) {
+      setGrokError('Dashboard is not connected to the server.');
+      return;
+    }
+    if (!extensionOnline) {
+      setGrokError('This extension is offline. Open the browser extension and try again.');
+      return;
+    }
+    socketService.sendGrokOrder(extensionId, text);
+    appendLog(makeLog('info', 'Grok order queued', text.length > 120 ? `${text.slice(0, 120)}…` : text));
+  };
+
   if (!extensionId) {
     return (
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-12 text-center">
         <p className="text-slate-600">Invalid extension.</p>
-        <Link to="/" className="text-primary-600 text-sm mt-3 inline-block hover:underline">
+        <Link to="/extensions" className="text-primary-600 text-sm mt-3 inline-block hover:underline">
           Back to extensions
         </Link>
       </main>
@@ -213,7 +259,7 @@ const ExtensionDetailPage: React.FC = () => {
   return (
     <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
       <Link
-        to="/"
+        to="/extensions"
         className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 transition"
       >
         ← Extensions
@@ -287,20 +333,56 @@ const ExtensionDetailPage: React.FC = () => {
           onCancel={cancelCurrentOrder}
         />
 
-        <IndeedScrapePanel
-          query={query}
-          location={location}
-          sort={sort}
-          fromage={fromage}
-          onQueryChange={setQuery}
-          onLocationChange={setLocation}
-          onSortChange={setSort}
-          onFromageChange={setFromage}
-          onRun={runOrder}
-          disabled={!isConnected || !extensionOnline}
-          busy={Boolean(currentOrder && ACTIVE_STATUSES.has(currentOrder.status))}
-          error={error}
-        />
+        <div className="flex rounded-lg border border-slate-200 bg-slate-50/80 p-1 gap-1">
+          <button
+            type="button"
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
+              orderSection === 'grok'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            onClick={() => setOrderSection('grok')}
+          >
+            Grok order
+          </button>
+          <button
+            type="button"
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
+              orderSection === 'indeed'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            onClick={() => setOrderSection('indeed')}
+          >
+            Indeed scrape
+          </button>
+        </div>
+
+        {orderSection === 'grok' ? (
+          <GrokOrderPanel
+            message={grokMessage}
+            onMessageChange={setGrokMessage}
+            onRun={runGrokOrder}
+            disabled={!isConnected || !extensionOnline}
+            busy={Boolean(currentOrder && ACTIVE_STATUSES.has(currentOrder.status))}
+            error={grokError}
+          />
+        ) : (
+          <IndeedScrapePanel
+            query={query}
+            location={location}
+            sort={sort}
+            fromage={fromage}
+            onQueryChange={setQuery}
+            onLocationChange={setLocation}
+            onSortChange={setSort}
+            onFromageChange={setFromage}
+            onRun={runOrder}
+            disabled={!isConnected || !extensionOnline}
+            busy={Boolean(currentOrder && ACTIVE_STATUSES.has(currentOrder.status))}
+            error={error}
+          />
+        )}
 
         <OrderLiveLog entries={logs} />
       </div>

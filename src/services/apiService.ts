@@ -1,11 +1,20 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import { AUTH_TOKEN_STORAGE_KEY } from '../constants/authStorage';
 import { IApiResponse } from '../types/api';
+import type { JobsCountByDayByPlatformResult, JobsCountByDayResult } from '../types/analytics';
+import type {
+  CompanyListParams,
+  CrawlListResult,
+  IndeedCompany,
+  IndeedJob,
+  JobListParams
+} from '../types/crawl';
 
 export interface Extension {
   _id: string;
   extensionId: string;
-  userEmail: string;
-  userId: string;
+  userEmail?: string;
+  userId?: string;
   isRunning: boolean;
   lastSeen: string;
   userAgent?: string;
@@ -67,27 +76,34 @@ export interface UserProfile {
   updatedAt: string;
 }
 
-export interface UrlHistoryItem {
-  _id: string;
-  userEmail: string;
-  userId: string;
-  extensionId: string;
-  url: string;
-  previousUrl?: string;
-  title?: string;
-  tabId?: number;
-  timestamp: string;
-  type: 'tab_change' | 'spa_navigation' | 'page_load';
-  domain?: string;
-  path?: string;
+export interface ApiKeyRow {
+  id: string;
+  name: string;
+  keyId: string;
+  keyPrefix: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
-export interface UrlHistoryParams {
-  limit?: number;
-  offset?: number;
-  extensionId?: string;
+export interface CreateApiKeyResponse {
+  id: string;
+  name: string;
+  keyId: string;
+  key: string;
+  createdAt: string;
+}
+
+export interface CombineActionResult {
+  groups: number;
+  combinedRecords: number;
+  sourcesMarked: number;
+  skipped?: number;
+}
+
+export interface UncombinedCounts {
+  companies: number;
+  jobs: number;
 }
 
 class ApiService {
@@ -107,6 +123,16 @@ class ApiService {
   }
 
   private setupInterceptors() {
+    this.axiosInstance.interceptors.request.use((config) => {
+      if (typeof window !== 'undefined') {
+        const t = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+        if (t) {
+          config.headers.Authorization = `Bearer ${t}`;
+        }
+      }
+      return config;
+    });
+
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse<IApiResponse>) => {
         const { data } = response;
@@ -117,17 +143,38 @@ class ApiService {
       },
       (error) => {
         console.error('API Error:', error);
-        throw error;
+        const body = error?.response?.data;
+        const msg =
+          (typeof body?.message === 'string' && body.message) ||
+          (typeof body?.error === 'string' && body.error) ||
+          error?.message ||
+          'API request failed';
+        throw new Error(msg);
       }
     );
   }
 
-  async getExtensions(): Promise<Extension[]> {
-    return this.axiosInstance.get('/api/extensions');
+  async login(
+    username: string,
+    password: string
+  ): Promise<{ token: string; user: { username: string; role: string } }> {
+    return this.axiosInstance.post('/api/auth/login', { username, password });
   }
 
-  async getUrlHistory(params: UrlHistoryParams = {}): Promise<UrlHistoryItem[]> {
-    return this.axiosInstance.get('/api/extensions/url-history', { params });
+  async listApiKeys(): Promise<ApiKeyRow[]> {
+    return this.axiosInstance.get('/api/admin/api-keys');
+  }
+
+  async createApiKey(name: string): Promise<CreateApiKeyResponse> {
+    return this.axiosInstance.post('/api/admin/api-keys', { name });
+  }
+
+  async revokeApiKey(id: string): Promise<void> {
+    return this.axiosInstance.patch(`/api/admin/api-keys/${id}/revoke`);
+  }
+
+  async getExtensions(): Promise<Extension[]> {
+    return this.axiosInstance.get('/api/extensions');
   }
 
   async removeExtension(extensionId: string): Promise<void> {
@@ -141,6 +188,13 @@ class ApiService {
     return this.axiosInstance.post('/api/action-orders', {
       extensionId,
       ...params
+    });
+  }
+
+  async createGrokActionOrder(extensionId: string, message: string) {
+    return this.axiosInstance.post('/api/action-orders/grok', {
+      extensionId,
+      message
     });
   }
 
@@ -199,6 +253,56 @@ class ApiService {
 
   async deleteProfile(profileId: string) {
     return this.axiosInstance.delete(`/api/profiles/${profileId}`);
+  }
+
+  async getJobsCountByDay(params: { days: number; platform?: string }): Promise<JobsCountByDayResult> {
+    return this.axiosInstance.get('/api/admin/crawl/analytics/jobs-per-day', { params });
+  }
+
+  async getJobsCountByDayByPlatform(params: { days: number }): Promise<JobsCountByDayByPlatformResult> {
+    return this.axiosInstance.get('/api/admin/crawl/analytics/jobs-per-day-by-platform', { params });
+  }
+
+  async listCrawlJobs(params: JobListParams = {}): Promise<CrawlListResult<IndeedJob>> {
+    return this.axiosInstance.get('/api/admin/crawl/jobs', { params });
+  }
+
+  async getCrawlJob(jobId: string): Promise<IndeedJob> {
+    return this.axiosInstance.get(`/api/admin/crawl/jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  async listCrawlCompanies(params: CompanyListParams = {}): Promise<CrawlListResult<IndeedCompany>> {
+    return this.axiosInstance.get('/api/admin/crawl/companies', { params });
+  }
+
+  async getCrawlCompany(platform: string, companypage: string): Promise<IndeedCompany> {
+    return this.axiosInstance.get('/api/admin/crawl/companies/lookup', {
+      params: { platform, companypage }
+    });
+  }
+
+  async setCrawlCompanyIgnored(
+    platform: string,
+    companypage: string,
+    ignored: boolean
+  ): Promise<IndeedCompany> {
+    return this.axiosInstance.patch('/api/admin/crawl/companies/ignored', {
+      platform,
+      companypage,
+      ignored
+    });
+  }
+
+  async getUncombinedCounts(): Promise<UncombinedCounts> {
+    return this.axiosInstance.get('/api/admin/crawl/actions/uncombined-counts');
+  }
+
+  async combineCrawlCompanies(): Promise<CombineActionResult> {
+    return this.axiosInstance.post('/api/admin/crawl/actions/combine-companies');
+  }
+
+  async combineCrawlJobs(): Promise<CombineActionResult> {
+    return this.axiosInstance.post('/api/admin/crawl/actions/combine-jobs');
   }
 }
 

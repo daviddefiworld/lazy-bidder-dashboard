@@ -12,6 +12,23 @@ export const formatTime = (date: Date | string | number): string => {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
 
+/** Format `date_published` for display; returns null if missing or unparseable. */
+export function formatJobPublished(
+  datePublished: string | null | undefined
+): { label: string; relative: string | null } | null {
+  const raw = datePublished?.trim();
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  if (!Number.isFinite(ms)) return { label: raw, relative: null };
+  const label = new Date(ms).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+  const relative = formatRelativeTime(ms);
+  return { label, relative };
+}
+
 export const formatRelativeTime = (timestamp: number | string): string => {
   const ms = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp;
   const diff = Date.now() - ms;

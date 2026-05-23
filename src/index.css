@@ -38,4 +38,12 @@
   .log-scroll::-webkit-scrollbar-thumb {
     @apply bg-slate-300 rounded-full;
   }
+
+  .job-markdown > *:first-child {
+    margin-top: 0;
+  }
+
+  .job-markdown > *:last-child {
+    margin-bottom: 0;
+  }
 }

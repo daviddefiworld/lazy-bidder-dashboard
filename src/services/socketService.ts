@@ -38,6 +38,7 @@ export interface SocketEvents {
     resultsCount?: number;
     error?: string;
     completedAt?: string;
+    grokResult?: { message: string; conversationId?: string };
   }) => void;
   'action:job_result': (data: {
     orderId: string;
@@ -73,13 +74,16 @@ class SocketService {
     this.off = this.off.bind(this);
   }
 
-  connect(serverUrl: string): Promise<void> {
+  connect(serverUrl: string, options?: { token?: string }): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        const auth: Record<string, unknown> = {};
+        if (options?.token) {
+          auth.token = options.token;
+        }
+
         this.socket = io(serverUrl, {
-          auth: {
-            dashboard: true
-          },
+          auth,
           transports: ['websocket', 'polling'],
           timeout: 20000,
           forceNew: true
@@ -208,6 +212,13 @@ class SocketService {
     this.sendMessage('create_action_order', {
       extensionId,
       ...params
+    });
+  }
+
+  sendGrokOrder(extensionId: string, message: string): void {
+    this.sendMessage('create_grok_order', {
+      extensionId,
+      message
     });
   }
 

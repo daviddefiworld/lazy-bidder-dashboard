@@ -5,8 +5,10 @@ A React + TypeScript app (Vite, Tailwind) with auth and a real-time **Socket.io*
 ## Features
 
 - **Authentication** — login, JWT session, protected routes (`ProtectedRoute`, `AuthContext`)
-- **Socket context** — `SocketProvider` / `SocketContext` for live backend communication
-- **Script console** — main authenticated surface (`ScriptConsolePage`)
+- **Socket context** — `SocketProvider` / `SocketContext`; connects with the admin JWT after login
+- **Extensions** — home (`/`) with live extension cards
+- **User management** — table of registered extensions (`/users`)
+- **API keys** — create and revoke REST API keys (`/api-keys`)
 - **Forms** — React Hook Form + Zod where used
 - **TypeScript** — typed API and auth helpers
 
@@ -59,7 +61,7 @@ A React + TypeScript app (Vite, Tailwind) with auth and a real-time **Socket.io*
 src/
 ├── components/          # ProtectedRoute, LoadingSpinner, ErrorAlert
 ├── contexts/            # AuthContext, SocketContext
-├── pages/               # LoginPage, ScriptConsolePage
+├── pages/               # LoginPage, ExtensionsPage, UsersPage, ApiKeysPage, …
 ├── services/            # apiService, socketService
 ├── types/               # auth, api, env
 ├── utils/               # formatters, urlUtils
@@ -70,10 +72,11 @@ src/
 
 ## Authentication Flow
 
-1. User signs in on **`/login`**
-2. JWT and user info are stored (see `AuthContext` for details)
-3. **`/`** renders **`ScriptConsolePage`** inside **`ProtectedRoute`**
-4. Unauthenticated visitors are redirected to **`/login`**
+1. User signs in on **`/login`** with backend `ADMIN_USERNAME` / `ADMIN_PASSWORD`
+2. JWT is stored in `localStorage` under `lazybidder_dashboard_jwt` (see `constants/authStorage.ts`)
+3. Protected routes (`/`, `/users`, `/api-keys`, extension detail) sit behind **`ProtectedRoute`**
+4. **Socket.io** uses `auth: { token }` with the same JWT (see `socketService.ts`)
+5. Unauthenticated visitors are redirected to **`/login`**
 
 ## Development Notes
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ActionOrder } from '../../types/actionOrder';
 import { formatDate, getOrderStatusColor } from '../../utils/formatters';
+import { orderGrokMessage, orderIndeedSummary, orderPatchedJobCount } from '../../utils/orderUtils';
 
 interface OrderHistoryListProps {
   activeOrders: ActionOrder[];
@@ -30,8 +31,17 @@ const OrderRow: React.FC<{
       </span>
     </div>
     <p className="text-[11px] text-slate-500 mt-1">
-      {order.patchedJobCount ?? order.results?.length ?? 0} jobs · {order.query} / {order.location} ·{' '}
-      {order.createdAt ? formatDate(order.createdAt) : '—'}
+      {order.sitename === 'grok' ? (
+        <>
+          {(orderGrokMessage(order) ?? '—').slice(0, 48)}
+          {(orderGrokMessage(order)?.length ?? 0) > 48 ? '…' : ''}
+        </>
+      ) : (
+        <>
+          {orderPatchedJobCount(order)} jobs · {orderIndeedSummary(order)}
+        </>
+      )}{' '}
+      · {order.createdAt ? formatDate(order.createdAt) : '—'}
     </p>
     {order.error && <p className="text-[11px] text-red-600 mt-1 line-clamp-2">{order.error}</p>}
   </button>

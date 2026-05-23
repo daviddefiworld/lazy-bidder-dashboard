@@ -15,11 +15,11 @@ export interface ActionOrder {
   _id?: string;
   orderId: string;
   extensionId: string;
-  query: string;
-  location: string;
-  sort: string;
-  fromage: string;
-  patchedJobCount: number;
+  sitename?: string;
+  /** Site-specific request payload (Indeed search, Grok message, etc.). */
+  input?: Record<string, unknown>;
+  /** Progress and results (e.g. `patchedJobCount`, `grokResult`). */
+  output?: Record<string, unknown>;
   results?: JobResult[];
   status: ActionOrderStatus;
   error?: string;

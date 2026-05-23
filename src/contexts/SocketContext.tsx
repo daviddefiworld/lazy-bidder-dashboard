@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
 import socketService from '../services/socketService';
 
 export interface SocketContextType {
@@ -27,27 +28,47 @@ interface SocketProviderProps {
 }
 
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
+  const { token } = useAuth();
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [socketId, setSocketId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
+    if (!token) {
+      socketService.disconnect();
+      setIsConnected(false);
+      setSocketId(undefined);
+      return;
+    }
+
+    let cancelled = false;
     const serverUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+
     socketService
-      .connect(serverUrl)
+      .connect(serverUrl, { token })
       .then(() => {
+        if (cancelled) return;
         setIsConnected(true);
         setSocketId(socketService.getSocketId());
       })
-      .catch((err) => console.error('Socket connect failed:', err));
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Socket connect failed:', err);
+        }
+        setIsConnected(false);
+        setSocketId(undefined);
+      });
 
     return () => {
+      cancelled = true;
       socketService.disconnect();
       setIsConnected(false);
       setSocketId(undefined);
     };
-  }, []);
+  }, [token]);
 
   useEffect(() => {
+    if (!token) return;
+
     const updateConnectionStatus = () => {
       setIsConnected(socketService.getConnectionStatus());
       setSocketId(socketService.getSocketId());
@@ -59,10 +80,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     return () => {
       clearInterval(statusInterval);
     };
-  }, []);
+  }, [token]);
 
   const connect = async (serverUrl: string): Promise<void> => {
-    await socketService.connect(serverUrl);
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+    await socketService.connect(serverUrl, { token });
     setIsConnected(true);
     setSocketId(socketService.getSocketId());
   };

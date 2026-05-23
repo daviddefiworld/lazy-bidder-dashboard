@@ -23,14 +23,3 @@ export const isUrlFromDomain = (url: string, domain: string): boolean => {
     return false;
   }
 };
-
-export const groupUrlHistoryByDomain = (urlHistory: any[]): Record<string, any[]> => {
-  return urlHistory.reduce((groups, item) => {
-    const domain = getDomainFromUrl(item.url);
-    if (!groups[domain]) {
-      groups[domain] = [];
-    }
-    groups[domain].push(item);
-    return groups;
-  }, {} as Record<string, any[]>);
-};
