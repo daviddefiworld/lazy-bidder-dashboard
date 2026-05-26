@@ -8,6 +8,7 @@ import ListLayoutToggle from '../components/crawl/ListLayoutToggle';
 import { RefreshIconButton } from '../components/crawl/ListPageIcons';
 import PaginationBar from '../components/crawl/PaginationBar';
 import RatingStars from '../components/crawl/RatingStars';
+import RelevanceScore from '../components/company/RelevanceScore';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import apiService from '../services/apiService';
 import type { IndeedCompany } from '../types/crawl';
@@ -77,16 +78,18 @@ const CompaniesPage: React.FC = () => {
 
   useEffect(() => {
     saveCompaniesListPreferences({
-      q: url.q,
-      posted: url.posted,
+      q: searchInput,
+      posted: postedWithin,
       ignored: url.ignored,
       sort: url.sort,
       order: url.order,
       view: url.view
     });
-  }, [url.q, url.posted, url.ignored, url.sort, url.order, url.view]);
+  }, [searchInput, postedWithin, url.ignored, url.sort, url.order, url.view]);
 
   useEffect(() => {
+    if (debouncedSearch !== searchInput) return;
+
     const filtersChanged = debouncedSearch !== url.q || postedWithin !== url.posted;
     if (!filtersChanged) return;
 
@@ -101,6 +104,7 @@ const CompaniesPage: React.FC = () => {
     });
   }, [
     debouncedSearch,
+    searchInput,
     url.q,
     postedWithin,
     url.posted,
@@ -329,9 +333,12 @@ const CompanyCard: React.FC<{ company: IndeedCompany }> = ({ company }) => {
           </div>
           <p className="text-xs text-slate-500 capitalize mt-0.5">{company.platform}</p>
         </div>
-        {company.rating != null ? (
-          <RatingStars rating={company.rating} reviewCount={company.review_count} />
-        ) : null}
+        <div className="shrink-0 flex flex-col items-end gap-2">
+          {company.fit_score != null ? <RelevanceScore score={company.fit_score} size="sm" /> : null}
+          {company.rating != null ? (
+            <RatingStars rating={company.rating} reviewCount={company.review_count} />
+          ) : null}
+        </div>
       </div>
 
       <div className="flex-1 space-y-2 text-sm text-slate-600">
@@ -395,6 +402,7 @@ const CompanyRow: React.FC<{ company: IndeedCompany }> = ({ company }) => {
           </div>
         </div>
         <div className="shrink-0 flex flex-col items-start sm:items-end gap-2 text-xs text-slate-500">
+          {company.fit_score != null ? <RelevanceScore score={company.fit_score} size="sm" /> : null}
           {company.rating != null ? (
             <RatingStars rating={company.rating} reviewCount={company.review_count} />
           ) : null}

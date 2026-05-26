@@ -118,32 +118,49 @@ const JobsPage: React.FC = () => {
   }, [setSearchParams]);
 
   useEffect(() => {
+    const savedSort: JobListSort = sort === 'relevant' && !searchInput.trim() ? 'date' : sort;
     saveJobsListPreferences({
-      q: url.q,
-      skills: url.skills,
-      sort: url.sort,
-      posted: url.posted,
+      q: searchInput,
+      skills: skillsInput,
+      sort: savedSort,
+      posted: postedWithin,
       view: url.view
     });
-  }, [url.q, url.skills, url.sort, url.posted, url.view]);
+  }, [searchInput, skillsInput, sort, postedWithin, url.view]);
 
   useEffect(() => {
+    if (debouncedSearch !== searchInput || debouncedSkills !== skillsInput) return;
+
+    const nextSort: JobListSort = sort === 'relevant' && !debouncedSearch.trim() ? 'date' : sort;
     const filtersChanged =
       debouncedSearch !== url.q ||
       debouncedSkills !== url.skills ||
       postedWithin !== url.posted ||
-      sort !== url.sort;
+      nextSort !== url.sort;
     if (!filtersChanged) return;
 
     syncUrl({
       q: debouncedSearch,
       page: 1,
-      sort,
+      sort: nextSort,
       posted: postedWithin,
       skills: debouncedSkills,
       view: url.view
     });
-  }, [debouncedSearch, debouncedSkills, sort, postedWithin, url.q, url.skills, url.posted, url.sort, url.view, syncUrl]);
+  }, [
+    debouncedSearch,
+    debouncedSkills,
+    searchInput,
+    skillsInput,
+    sort,
+    postedWithin,
+    url.q,
+    url.skills,
+    url.posted,
+    url.sort,
+    url.view,
+    syncUrl
+  ]);
 
   useEffect(() => {
     if (sort === 'relevant' && !url.q.trim()) {

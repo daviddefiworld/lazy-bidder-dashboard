@@ -101,11 +101,38 @@ export interface CombineActionResult {
   combinedRecords: number;
   sourcesMarked: number;
   skipped?: number;
+  duplicateGroupsMerged?: number;
+  duplicateRecordsMerged?: number;
 }
 
 export interface UncombinedCounts {
   companies: number;
   jobs: number;
+}
+
+export interface CompanyBatchAnalyzeCurrent {
+  platform: string;
+  companypage: string;
+  company_name?: string;
+  stage: 'grok' | 'ai';
+  orderId?: string;
+}
+
+export interface CompanyBatchAnalyzeStatus {
+  running: boolean;
+  total: number;
+  completed: number;
+  failed: number;
+  remaining: number;
+  current?: CompanyBatchAnalyzeCurrent;
+  lastError?: string;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+export interface CompanyAnalyzerBatchOverview {
+  nonAnalyzed: number;
+  batch: CompanyBatchAnalyzeStatus;
 }
 
 class ApiService {
@@ -325,6 +352,16 @@ class ApiService {
 
   async getUncombinedCounts(): Promise<UncombinedCounts> {
     return this.axiosInstance.get('/api/admin/crawl/actions/uncombined-counts');
+  }
+
+  async getCompanyAnalyzerBatchOverview(): Promise<CompanyAnalyzerBatchOverview> {
+    return this.axiosInstance.get('/api/admin/crawl/actions/company-analysis-status');
+  }
+
+  async startCompanyAnalyzerBatch(extensionId?: string): Promise<CompanyAnalyzerBatchOverview> {
+    return this.axiosInstance.post('/api/admin/crawl/actions/analyze-companies', {
+      ...(extensionId ? { extensionId } : {})
+    });
   }
 
   async combineCrawlCompanies(): Promise<CombineActionResult> {

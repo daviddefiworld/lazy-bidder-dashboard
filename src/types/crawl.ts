@@ -63,6 +63,7 @@ export interface IndeedCompany {
   payload_json: Record<string, unknown>;
   detail_scraped_at: string;
   ignored?: boolean;
+  fit_score?: number | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -79,7 +80,7 @@ export interface CrawlListResult<T> {
 
 export type JobListSort = 'date' | 'relevant' | 'title';
 
-export type CompanyListSort = 'updated' | 'jobs' | 'founded';
+export type CompanyListSort = 'updated' | 'jobs' | 'founded' | 'fit_score';
 
 export type ListSortOrder = 'asc' | 'desc';
 

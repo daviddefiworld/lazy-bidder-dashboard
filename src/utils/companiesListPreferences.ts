@@ -31,7 +31,7 @@ function parseIgnored(raw: unknown): CompanyIgnoredFilter {
 }
 
 function parseSort(raw: unknown): CompanyListSort {
-  if (raw === 'jobs' || raw === 'founded') return raw;
+  if (raw === 'jobs' || raw === 'founded' || raw === 'fit_score') return raw;
   return 'updated';
 }
 

@@ -61,6 +61,7 @@ const CompaniesFilterBar: React.FC<CompaniesFilterBarProps> = ({
       aria-label="Sort"
     >
       <option value="updated">Recently updated</option>
+      <option value="fit_score">Fit score</option>
       <option value="jobs">Job count</option>
       <option value="founded">Founded</option>
     </select>

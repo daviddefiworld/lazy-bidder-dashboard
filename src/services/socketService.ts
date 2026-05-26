@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import type { CompanyBatchAnalyzeStatus } from './apiService';
 
 export interface SocketMessage {
   type: string;
@@ -49,6 +50,7 @@ export interface SocketEvents {
   }) => void;
   'action:order_sent': (data: { message: string; orderId: string; extensionId: string }) => void;
   'company:analyzer_updated': (data: { platform: string; companypage: string; orderId?: string }) => void;
+  'company:batch_analyzer_updated': (data: { batch: CompanyBatchAnalyzeStatus }) => void;
 }
 
 export interface IndeedOrderPayload {
