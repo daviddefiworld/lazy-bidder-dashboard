@@ -152,7 +152,7 @@ class ApiService {
   private axiosInstance: AxiosInstance;
 
   constructor() {
-    const baseURL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:6000';
+    const baseURL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5005';
 
     this.axiosInstance = axios.create({
       baseURL,
