@@ -41,7 +41,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
 
     let cancelled = false;
-    const serverUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+    const serverUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:6000';
 
     socketService
       .connect(serverUrl, { token })
