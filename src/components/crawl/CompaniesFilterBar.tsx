@@ -60,8 +60,8 @@ const CompaniesFilterBar: React.FC<CompaniesFilterBarProps> = ({
       className={`${filterSelectClass} min-w-[9.5rem]`}
       aria-label="Sort"
     >
-      <option value="updated">Recently updated</option>
       <option value="fit_score">Fit score</option>
+      <option value="updated">Recently updated</option>
       <option value="jobs">Job count</option>
       <option value="founded">Founded</option>
     </select>

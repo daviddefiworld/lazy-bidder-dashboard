@@ -15,6 +15,7 @@ import { ContentPanelLoading } from '../components/ui/ContentPanel';
 import { extractKeyPeopleContacts } from '../utils/contactLinks';
 import { useConnectedExtensions } from '../hooks/useConnectedExtensions';
 import { useSocket } from '../contexts/SocketContext';
+import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/apiService';
 import socketService from '../services/socketService';
 import type { IndeedCompany, IndeedJob } from '../types/crawl';
@@ -39,13 +40,18 @@ const CompanyDetailPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const platform = searchParams.get('platform') ?? '';
   const companypage = searchParams.get('companypage') ?? '';
+  const companyNameParam = searchParams.get('company_name') ?? '';
   const tabParam = searchParams.get('tab');
   const activeView: CompanyDetailView =
     tabParam === 'grok' || tabParam === 'jobboard' ? tabParam : 'report';
 
   const { isConnected } = useSocket();
+  const { hasPermission } = useAuth();
   const { extensions } = useConnectedExtensions();
   const connectedExtension = extensions[0] ?? null;
+  const canAskGrok = hasPermission('run_company_grok');
+  const canAnalyze = hasPermission('run_company_analyze');
+  const canSetIgnored = hasPermission('set_company_ignored');
 
   const [company, setCompany] = useState<IndeedCompany | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,28 +80,38 @@ const CompanyDetailPage: React.FC = () => {
     setSearchParams(next, { replace: true });
   };
 
+  const analyzerCompanypage = (companypage || company?.companypage || '').trim();
+
   const loadAnalyzer = useCallback(
     async (opts?: { silent?: boolean }) => {
-      if (!platform || !companypage) return;
+      if (!platform || !analyzerCompanypage) {
+        if (!opts?.silent) {
+          setAnalyzer(null);
+          setAnalyzerLoading(false);
+        }
+        return;
+      }
       if (!opts?.silent) setAnalyzerLoading(true);
       try {
-        const data = await apiService.getCompanyAnalyzer(platform, companypage);
-        setAnalyzer(data ?? defaultAnalyzer(platform, companypage));
+        const data = await apiService.getCompanyAnalyzer(platform, analyzerCompanypage);
+        setAnalyzer(data ?? defaultAnalyzer(platform, analyzerCompanypage));
       } catch {
-        if (!opts?.silent) setAnalyzer(defaultAnalyzer(platform, companypage));
+        if (!opts?.silent) setAnalyzer(defaultAnalyzer(platform, analyzerCompanypage));
       } finally {
         if (!opts?.silent) setAnalyzerLoading(false);
       }
     },
-    [platform, companypage]
+    [platform, analyzerCompanypage]
   );
 
   const load = useCallback(async () => {
-    if (!platform || !companypage) return;
+    if (!platform || (!companypage && !companyNameParam)) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await apiService.getCrawlCompany(platform, companypage);
+      const data = companypage
+        ? await apiService.getCrawlCompany(platform, { companypage })
+        : await apiService.getCrawlCompany(platform, { company_name: companyNameParam });
       setCompany(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load company');
@@ -103,15 +119,22 @@ const CompanyDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [platform, companypage]);
+  }, [platform, companypage, companyNameParam]);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
     void loadAnalyzer();
-  }, [load, loadAnalyzer]);
+  }, [loadAnalyzer]);
 
   const loadJobs = useCallback(async () => {
-    if (!platform || !companypage) return;
+    if (!platform) return;
+    const page = (companypage || company?.companypage || '').trim();
+    const name = (companyNameParam || company?.company_name || '').trim();
+    if (!page && !name) return;
+
     setJobsLoading(true);
     setJobsError(null);
     const countHint = company?.jobs_count;
@@ -122,7 +145,7 @@ const CompanyDetailPage: React.FC = () => {
     try {
       const data = await apiService.listCrawlJobs({
         platform,
-        company_page: companypage,
+        ...(page ? { company_page: page } : { company_name: name }),
         limit,
         offset: 0,
         sort: 'date'
@@ -136,21 +159,23 @@ const CompanyDetailPage: React.FC = () => {
     } finally {
       setJobsLoading(false);
     }
-  }, [platform, companypage, company?.jobs_count]);
+  }, [platform, companypage, companyNameParam, company?.companypage, company?.company_name, company?.jobs_count]);
 
   useEffect(() => {
-    if (company) void loadJobs();
-  }, [company, loadJobs]);
+    if (!platform) return;
+    if (!companypage && !companyNameParam && !company) return;
+    void loadJobs();
+  }, [platform, companypage, companyNameParam, company, loadJobs]);
 
   useEffect(() => {
-    if (!isConnected || !platform || !companypage) return;
+    if (!isConnected || !platform || !analyzerCompanypage) return;
 
     const onAnalyzerUpdated = (data: {
       platform: string;
       companypage: string;
       orderId?: string;
     }) => {
-      if (data.platform !== platform || data.companypage !== companypage) return;
+      if (data.platform !== platform || data.companypage !== analyzerCompanypage) return;
       void loadAnalyzer({ silent: true });
     };
 
@@ -180,7 +205,7 @@ const CompanyDetailPage: React.FC = () => {
   }, [
     isConnected,
     platform,
-    companypage,
+    analyzerCompanypage,
     loadAnalyzer,
     trackedGrokOrderId,
     analyzer?.grok.orderId
@@ -245,10 +270,10 @@ const CompanyDetailPage: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (!grokIsPending || !platform || !companypage) return;
+    if (!grokIsPending || !platform || !analyzerCompanypage) return;
     const interval = setInterval(() => void loadAnalyzer({ silent: true }), 5000);
     return () => clearInterval(interval);
-  }, [grokIsPending, platform, companypage, loadAnalyzer]);
+  }, [grokIsPending, platform, analyzerCompanypage, loadAnalyzer]);
 
   useEffect(() => {
     if (analyzer?.grok.status === 'completed') {
@@ -270,19 +295,19 @@ const CompanyDetailPage: React.FC = () => {
   }, [analyzer?.grok.status, grokOrderInFlight, grokOrderStatus]);
 
   const handleAskGrok = async () => {
-    if (!platform || !companypage || grokIsPending) return;
+    if (!platform || !analyzerCompanypage || grokIsPending || !canAskGrok) return;
     setActionError(null);
     setView('grok');
     setGrokSubmitting(true);
     setGrokOrderStatus('pending');
     setAnalyzer((prev) => ({
-      ...(prev ?? defaultAnalyzer(platform, companypage)),
+      ...(prev ?? defaultAnalyzer(platform, analyzerCompanypage)),
       grok: { status: 'pending', error: undefined, text: undefined }
     }));
     try {
       const result = await apiService.requestCompanyGrokResearch(
         platform,
-        companypage,
+        analyzerCompanypage,
         connectedExtension?.extensionId
       );
       setAnalyzer(result.analyzer);
@@ -300,12 +325,12 @@ const CompanyDetailPage: React.FC = () => {
   };
 
   const handleAnalyze = async () => {
-    if (!platform || !companypage) return;
+    if (!platform || !analyzerCompanypage || !canAnalyze) return;
     setActionError(null);
     setAnalyzeBusy(true);
     setView('report');
     try {
-      const updated = await apiService.analyzeCompany(platform, companypage);
+      const updated = await apiService.analyzeCompany(platform, analyzerCompanypage);
       setAnalyzer(updated);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'AI analysis failed');
@@ -316,7 +341,7 @@ const CompanyDetailPage: React.FC = () => {
   };
 
   const handleIgnoredChange = async (ignored: boolean) => {
-    if (!company) return;
+    if (!company || !canSetIgnored) return;
     setIgnoredSaving(true);
     setIgnoredError(null);
     try {
@@ -339,7 +364,7 @@ const CompanyDetailPage: React.FC = () => {
     void loadJobs();
   };
 
-  const research = analyzer ?? defaultAnalyzer(platform, companypage);
+  const research = analyzer ?? defaultAnalyzer(platform, analyzerCompanypage);
   const grokPending = grokIsPending;
   const grokReady = research.grok.status === 'completed' && !!research.grok.text?.trim();
   const grokFailed = research.grok.status === 'failed' && !grokPending;
@@ -352,10 +377,10 @@ const CompanyDetailPage: React.FC = () => {
     [research.grok.text, research.analyze.report]
   );
 
-  if (!platform || !companypage) {
+  if (!platform || (!companypage && !companyNameParam)) {
     return (
       <main className="flex-1 max-w-4xl mx-auto px-4 py-16 text-center text-slate-500">
-        <p className="text-sm">Missing platform or companypage query parameters.</p>
+        <p className="text-sm">Missing platform or company identifier in the URL.</p>
         <Link to="/companies" className="mt-3 inline-block text-sm font-medium text-primary-700">
           ← Companies
         </Link>
@@ -421,6 +446,7 @@ const CompanyDetailPage: React.FC = () => {
       }
       onAskGrok={() => void handleAskGrok()}
       extensionHint={extensionHint}
+      canAskGrok={canAskGrok}
     />
   );
 
@@ -543,6 +569,8 @@ const CompanyDetailPage: React.FC = () => {
             analyzeBusy={analyzeBusy}
             grokReady={grokReady}
             connectedExtension={!!connectedExtension}
+            canAskGrok={canAskGrok}
+            canAnalyze={canAnalyze}
             onAskGrok={() => void handleAskGrok()}
             onAnalyze={() => void handleAnalyze()}
             onRefresh={handleRefresh}
@@ -579,6 +607,7 @@ const CompanyDetailPage: React.FC = () => {
           connectedExtension={!!connectedExtension}
           extensionHint={extensionHint}
           contactLinks={contactLinks}
+          canSetIgnored={canSetIgnored}
           onIgnoredChange={(v) => void handleIgnoredChange(v)}
           ignoredSaving={ignoredSaving}
           ignoredError={ignoredError}

@@ -60,10 +60,20 @@ const JobDetailPage: React.FC = () => {
     setSidebarLoading(true);
 
     const loadSidebar = async () => {
-      const companyPromise =
-        job.company_page && job.platform
-          ? apiService.getCrawlCompany(job.platform, job.company_page).catch(() => null)
-          : Promise.resolve(null);
+      const companyPromise = (async () => {
+        if (!job.platform) return null;
+
+        if (job.company_page?.trim()) {
+          const byPage = await apiService
+            .getCrawlCompany(job.platform, { companypage: job.company_page.trim() })
+            .catch(() => null);
+          if (byPage) return byPage;
+        }
+
+        return apiService
+          .getCrawlCompany(job.platform, { company_name: job.company_name.trim() })
+          .catch(() => null);
+      })();
 
       const jobsPromise = apiService.listCrawlJobs({
         company_name: job.company_name,
@@ -167,8 +177,16 @@ const JobDetailPage: React.FC = () => {
     job.location_long || job.location_short || [job.city, job.admin1_name].filter(Boolean).join(', ');
   const published = formatJobPublished(job.date_published);
   const companyName = job.company_name || 'Unknown company';
-  const companyLink =
-    job.company_page && job.platform ? companyDetailPath(job.platform, job.company_page) : null;
+  const companyPageSlug = (company?.companypage || job.company_page)?.trim() || undefined;
+  const companyLink = job.platform
+    ? companyDetailPath(job.platform, {
+        companypage: companyPageSlug,
+        company_name: companyPageSlug ? undefined : companyName
+      })
+    : null;
+  const applyPlatformLabel = job.platform?.trim()
+    ? `Apply on ${job.platform.charAt(0).toUpperCase()}${job.platform.slice(1)}`
+    : 'Apply now';
 
   return (
     <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-8 pb-24">
@@ -249,7 +267,7 @@ const JobDetailPage: React.FC = () => {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 transition"
             >
-              Apply on Indeed
+              {applyPlatformLabel}
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
@@ -361,7 +379,7 @@ const JobDetailPage: React.FC = () => {
           <JobCompanySidebarCard
             companyName={companyName}
             platform={job.platform}
-            companyPage={job.company_page}
+            companyPage={companyPageSlug}
             jobRating={job.company_review_rating}
             jobReviewCount={job.company_review_count}
             company={company}

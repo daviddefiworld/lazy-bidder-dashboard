@@ -11,6 +11,7 @@ import type {
 } from '../types/crawl';
 import type { ActionOrder } from '../types/actionOrder';
 import type { CompanyAnalyzer, GrokResearchStartResult } from '../types/companyResearch';
+import type { AuthUser, DashboardPermission } from '../types/auth';
 
 export interface Extension {
   _id: string;
@@ -110,6 +111,16 @@ export interface UncombinedCounts {
   jobs: number;
 }
 
+export interface DashboardUserRow {
+  id: string;
+  username: string;
+  role: 'admin' | 'user';
+  permissions: DashboardPermission[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CompanyBatchAnalyzeCurrent {
   platform: string;
   companypage: string;
@@ -128,10 +139,12 @@ export interface CompanyBatchAnalyzeStatus {
   lastError?: string;
   startedAt?: string;
   finishedAt?: string;
+  stopped?: boolean;
 }
 
 export interface CompanyAnalyzerBatchOverview {
   nonAnalyzed: number;
+  reanalyzeEligible: number;
   batch: CompanyBatchAnalyzeStatus;
 }
 
@@ -186,8 +199,40 @@ class ApiService {
   async login(
     username: string,
     password: string
-  ): Promise<{ token: string; user: { username: string; role: string } }> {
+  ): Promise<{ token: string; user: AuthUser }> {
     return this.axiosInstance.post('/api/auth/login', { username, password });
+  }
+
+  async getSession(): Promise<{ user: AuthUser }> {
+    return this.axiosInstance.get('/api/auth/session');
+  }
+
+  async listUsers(): Promise<DashboardUserRow[]> {
+    return this.axiosInstance.get('/api/admin/users');
+  }
+
+  async createUser(input: {
+    username: string;
+    password: string;
+    role: 'admin' | 'user';
+    permissions?: DashboardPermission[];
+  }): Promise<DashboardUserRow> {
+    return this.axiosInstance.post('/api/admin/users', input);
+  }
+
+  async updateUserPermissions(
+    id: string,
+    input: { role: 'admin' | 'user'; permissions: DashboardPermission[] }
+  ): Promise<DashboardUserRow> {
+    return this.axiosInstance.patch(`/api/admin/users/${id}/permissions`, input);
+  }
+
+  async updateUserPassword(id: string, password: string): Promise<void> {
+    return this.axiosInstance.patch(`/api/admin/users/${id}/password`, { password });
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    return this.axiosInstance.delete(`/api/admin/users/${id}`);
   }
 
   async listApiKeys(): Promise<ApiKeyRow[]> {
@@ -304,10 +349,17 @@ class ApiService {
     return this.axiosInstance.get('/api/admin/crawl/companies', { params });
   }
 
-  async getCrawlCompany(platform: string, companypage: string): Promise<IndeedCompany> {
-    return this.axiosInstance.get('/api/admin/crawl/companies/lookup', {
-      params: { platform, companypage }
-    });
+  async getCrawlCompany(
+    platform: string,
+    opts: { companypage?: string; company_name?: string }
+  ): Promise<IndeedCompany> {
+    const params: Record<string, string> = { platform };
+    if (opts.companypage?.trim()) {
+      params.companypage = opts.companypage.trim();
+    } else if (opts.company_name?.trim()) {
+      params.company_name = opts.company_name.trim();
+    }
+    return this.axiosInstance.get('/api/admin/crawl/companies/lookup', { params });
   }
 
   async getCompanyAnalyzer(
@@ -364,12 +416,28 @@ class ApiService {
     });
   }
 
+  async startCompanyReanalyzerBatch(): Promise<CompanyAnalyzerBatchOverview> {
+    return this.axiosInstance.post('/api/admin/crawl/actions/reanalyze-companies');
+  }
+
+  async stopCompanyAnalyzerBatch(): Promise<CompanyAnalyzerBatchOverview> {
+    return this.axiosInstance.post('/api/admin/crawl/actions/stop-analyze-companies');
+  }
+
   async combineCrawlCompanies(): Promise<CombineActionResult> {
     return this.axiosInstance.post('/api/admin/crawl/actions/combine-companies');
   }
 
   async combineCrawlJobs(): Promise<CombineActionResult> {
     return this.axiosInstance.post('/api/admin/crawl/actions/combine-jobs');
+  }
+
+  async recombineCrawlCompanies(): Promise<CombineActionResult> {
+    return this.axiosInstance.post('/api/admin/crawl/actions/recombine-companies');
+  }
+
+  async recombineCrawlJobs(): Promise<CombineActionResult> {
+    return this.axiosInstance.post('/api/admin/crawl/actions/recombine-jobs');
   }
 }
 

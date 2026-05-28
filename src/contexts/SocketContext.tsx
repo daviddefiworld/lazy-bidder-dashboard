@@ -28,12 +28,12 @@ interface SocketProviderProps {
 }
 
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
-  const { token } = useAuth();
+  const { token, initializing } = useAuth();
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [socketId, setSocketId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || initializing) {
       socketService.disconnect();
       setIsConnected(false);
       setSocketId(undefined);
@@ -64,10 +64,10 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       setIsConnected(false);
       setSocketId(undefined);
     };
-  }, [token]);
+  }, [token, initializing]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || initializing) return;
 
     const updateConnectionStatus = () => {
       setIsConnected(socketService.getConnectionStatus());
@@ -80,7 +80,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     return () => {
       clearInterval(statusInterval);
     };
-  }, [token]);
+  }, [token, initializing]);
 
   const connect = async (serverUrl: string): Promise<void> => {
     if (!token) {

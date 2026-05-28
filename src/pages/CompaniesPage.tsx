@@ -4,7 +4,6 @@ import PageHeader from '../components/layout/PageHeader';
 import CompaniesFilterBar from '../components/crawl/CompaniesFilterBar';
 import EmptyState from '../components/crawl/EmptyState';
 import { DEFAULT_POSTED_WITHIN } from '../components/crawl/JobsFilterBar';
-import ListLayoutToggle from '../components/crawl/ListLayoutToggle';
 import { RefreshIconButton } from '../components/crawl/ListPageIcons';
 import PaginationBar from '../components/crawl/PaginationBar';
 import RatingStars from '../components/crawl/RatingStars';
@@ -14,12 +13,9 @@ import apiService from '../services/apiService';
 import type { IndeedCompany } from '../types/crawl';
 import { companyDetailPath } from '../utils/crawlUtils';
 import { formatRelativeTime } from '../utils/formatters';
+import { headerSelectClass, stickyFilterPanelClass } from '../components/crawl/listPageStyles';
 import {
-  headerSelectClass,
-  stickyFilterPanelClass,
-  type ListViewLayout
-} from '../components/crawl/listPageStyles';
-import {
+  companiesFiltersDifferFromDefaults,
   mergeCompaniesUrlWithPreferences,
   readCompaniesUrlState,
   saveCompaniesListPreferences,
@@ -77,6 +73,7 @@ const CompaniesPage: React.FC = () => {
   }, [setSearchParams]);
 
   useEffect(() => {
+    if (!urlReady) return;
     saveCompaniesListPreferences({
       q: searchInput,
       posted: postedWithin,
@@ -85,7 +82,7 @@ const CompaniesPage: React.FC = () => {
       order: url.order,
       view: url.view
     });
-  }, [searchInput, postedWithin, url.ignored, url.sort, url.order, url.view]);
+  }, [urlReady, searchInput, postedWithin, url.ignored, url.sort, url.order, url.view]);
 
   useEffect(() => {
     if (debouncedSearch !== searchInput) return;
@@ -150,10 +147,6 @@ const CompaniesPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleViewChange = (view: ListViewLayout) => {
-    syncUrl({ ...url, view });
-  };
-
   const handleIgnoredFilterChange = (ignored: CompanyIgnoredFilter) => {
     syncUrl({ ...url, page: 1, ignored });
   };
@@ -171,13 +164,13 @@ const CompaniesPage: React.FC = () => {
     syncUrl({ ...url, page: 1, posted });
   };
 
-  const hasActiveFilters = Boolean(
-    url.q ||
-      (url.posted && url.posted !== DEFAULT_POSTED_WITHIN) ||
-      url.ignored !== 'hide' ||
-      url.sort !== 'updated' ||
-      url.order !== 'desc'
-  );
+  const hasActiveFilters = companiesFiltersDifferFromDefaults({
+    q: searchInput,
+    posted: postedWithin,
+    ignored: url.ignored,
+    sort: url.sort,
+    order: url.order
+  });
 
   const clearFilters = () => {
     setSearchInput('');
@@ -186,7 +179,7 @@ const CompaniesPage: React.FC = () => {
       q: '',
       page: 1,
       ignored: 'hide',
-      sort: 'updated',
+      sort: 'fit_score',
       order: 'desc',
       posted: DEFAULT_POSTED_WITHIN,
       view: url.view
@@ -211,7 +204,6 @@ const CompaniesPage: React.FC = () => {
               <option value="only">Ignored only</option>
               <option value="all">All employers</option>
             </select>
-            <ListLayoutToggle value={url.view} onChange={handleViewChange} />
             <RefreshIconButton onClick={() => void load()} disabled={loading} />
           </>
         }
@@ -282,19 +274,14 @@ const CompaniesPage: React.FC = () => {
             />
           </div>
 
-          {url.view === 'cards' ? (
-            <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 ${listClass}`}>
-              {items.map((co) => (
-                <CompanyCard key={`${co.platform}:${co.companypage}`} company={co} />
-              ))}
-            </div>
-          ) : (
-            <div className={`space-y-3 ${listClass}`}>
-              {items.map((co) => (
-                <CompanyRow key={`${co.platform}:${co.companypage}`} company={co} />
-              ))}
-            </div>
-          )}
+          <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 ${listClass}`}>
+            {items.map((co) => (
+              <CompanyCard
+                key={`${co.platform}:${co.companypage || co.company_name}`}
+                company={co}
+              />
+            ))}
+          </div>
 
           <div className="mt-6">
             <PaginationBar
@@ -312,7 +299,12 @@ const CompaniesPage: React.FC = () => {
 };
 
 const CompanyCard: React.FC<{ company: IndeedCompany }> = ({ company }) => {
-  const to = companyDetailPath(company.platform, company.companypage);
+  const pageSlug = company.companypage?.trim() || undefined;
+  const to =
+    companyDetailPath(company.platform, {
+      companypage: pageSlug,
+      company_name: pageSlug ? undefined : company.company_name
+    }) ?? '/companies';
 
   return (
     <Link
@@ -368,54 +360,6 @@ const CompanyCard: React.FC<{ company: IndeedCompany }> = ({ company }) => {
           Updated {formatRelativeTime(company.updatedAt)}
         </p>
       ) : null}
-    </Link>
-  );
-};
-
-const CompanyRow: React.FC<{ company: IndeedCompany }> = ({ company }) => {
-  const to = companyDetailPath(company.platform, company.companypage);
-
-  return (
-    <Link
-      to={to}
-      className="group block rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm transition hover:border-primary-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-    >
-      <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2 mb-1">
-            <h3 className="text-base font-semibold text-slate-900 group-hover:text-primary-800 transition line-clamp-2">
-              {company.company_name || 'Unnamed company'}
-            </h3>
-            {company.ignored ? (
-              <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                Ignored
-              </span>
-            ) : null}
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 capitalize">
-              {company.platform}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-            {company.headquarters ? <span>{company.headquarters}</span> : null}
-            {company.employee_range ? <span>{company.employee_range} employees</span> : null}
-            {company.founded ? <span>Founded {company.founded}</span> : null}
-          </div>
-        </div>
-        <div className="shrink-0 flex flex-col items-start sm:items-end gap-2 text-xs text-slate-500">
-          {company.fit_score != null ? <RelevanceScore score={company.fit_score} size="sm" /> : null}
-          {company.rating != null ? (
-            <RatingStars rating={company.rating} reviewCount={company.review_count} />
-          ) : null}
-          {company.jobs_count != null && company.jobs_count > 0 ? (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700 tabular-nums">
-              {company.jobs_count.toLocaleString()} jobs
-            </span>
-          ) : null}
-          {company.updatedAt ? (
-            <span>Updated {formatRelativeTime(company.updatedAt)}</span>
-          ) : null}
-        </div>
-      </div>
     </Link>
   );
 };

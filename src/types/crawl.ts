@@ -26,6 +26,8 @@ export interface IndeedJob {
   attributes_json: unknown[];
   company_review_rating?: number | null;
   company_review_count?: number | null;
+  /** Employer fit score from company analyzer (when listing jobs). */
+  company_fit_score?: number | null;
   payload_json: Record<string, unknown>;
   source_query: string;
   source_location: string;
@@ -78,7 +80,7 @@ export interface CrawlListResult<T> {
   offset: number;
 }
 
-export type JobListSort = 'date' | 'relevant' | 'title';
+export type JobListSort = 'date' | 'relevant' | 'title' | 'fit_score';
 
 export type CompanyListSort = 'updated' | 'jobs' | 'founded' | 'fit_score';
 

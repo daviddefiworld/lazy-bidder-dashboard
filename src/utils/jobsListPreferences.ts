@@ -1,7 +1,8 @@
-import { DEFAULT_POSTED_WITHIN, POSTED_WITHIN_OPTIONS } from '../components/crawl/JobsFilterBar';
+import { DEFAULT_POSTED_WITHIN } from '../components/crawl/JobsFilterBar';
 import type { ListViewLayout } from '../components/crawl/listPageStyles';
 import { parseListView } from '../components/crawl/listPageStyles';
 import type { JobListSort } from '../types/crawl';
+import { resolvePostedFilter } from './postedFilterPreference';
 
 export const JOBS_LIST_PREFERENCES_KEY = 'lazybidder_jobs_list_prefs';
 
@@ -13,18 +14,14 @@ export type JobsListPreferences = {
   view: ListViewLayout;
 };
 
-const POSTED_VALUES = new Set<string>(POSTED_WITHIN_OPTIONS.map((o) => o.value));
-
 function parseSort(raw: unknown): JobListSort {
-  if (raw === 'relevant' || raw === 'title') return raw;
-  return 'date';
+  if (raw === 'relevant' || raw === 'title' || raw === 'fit_score') return raw;
+  if (raw === 'date') return 'date';
+  return 'fit_score';
 }
 
 function parsePosted(raw: unknown): string {
-  if (typeof raw === 'string' && POSTED_VALUES.has(raw)) {
-    return raw;
-  }
-  return DEFAULT_POSTED_WITHIN;
+  return resolvePostedFilter(new URLSearchParams(), typeof raw === 'string' ? raw : undefined);
 }
 
 export function jobsUrlHasExplicitFilters(params: URLSearchParams): boolean {
@@ -34,8 +31,6 @@ export function jobsUrlHasExplicitFilters(params: URLSearchParams): boolean {
   if (params.has('view')) return true;
   const page = params.get('page');
   if (page && page !== '1') return true;
-  const posted = params.get('posted');
-  if (posted != null && posted !== '' && posted !== DEFAULT_POSTED_WITHIN) return true;
   return false;
 }
 
@@ -64,20 +59,32 @@ export function saveJobsListPreferences(prefs: JobsListPreferences): void {
   }
 }
 
+function sortFromUrl(params: URLSearchParams): JobListSort | null {
+  if (!params.has('sort')) return null;
+  const sortRaw = params.get('sort')?.toLowerCase();
+  if (sortRaw === 'relevant') return 'relevant';
+  if (sortRaw === 'title') return 'title';
+  if (sortRaw === 'date') return 'date';
+  return 'fit_score';
+}
+
+/** Read sort from URL; missing param means default fit_score. */
+export function resolveJobsSort(params: URLSearchParams): JobListSort {
+  return sortFromUrl(params) ?? 'fit_score';
+}
+
 export function mergeJobsUrlWithPreferences(params: URLSearchParams): JobsListPreferences {
+  const stored = readJobsListPreferences();
   const q = params.get('q') ?? '';
   const skills = params.get('skills') ?? '';
-  const sortRaw = params.get('sort')?.toLowerCase();
-  const sort: JobListSort =
-    sortRaw === 'relevant' ? 'relevant' : sortRaw === 'title' ? 'title' : 'date';
-  const posted = params.has('posted') ? (params.get('posted') ?? DEFAULT_POSTED_WITHIN) : DEFAULT_POSTED_WITHIN;
+  const sort = resolveJobsSort(params);
+  const posted = resolvePostedFilter(params, stored?.posted);
   const view = parseListView(params.get('view'), 'list');
 
   if (jobsUrlHasExplicitFilters(params)) {
     return { q, skills, sort, posted, view };
   }
 
-  const stored = readJobsListPreferences();
   if (!stored) {
     return { q, skills, sort, posted, view };
   }
@@ -86,7 +93,22 @@ export function mergeJobsUrlWithPreferences(params: URLSearchParams): JobsListPr
     q: stored.q,
     skills: stored.skills,
     sort: stored.sort,
-    posted: stored.posted,
+    posted,
     view: stored.view
   };
+}
+
+/** True when any filter differs from page defaults (for Clear button). */
+export function jobsFiltersDifferFromDefaults(filters: {
+  q: string;
+  skills: string;
+  posted: string;
+  sort: JobListSort;
+}): boolean {
+  return Boolean(
+    filters.q.trim() ||
+      filters.skills.trim() ||
+      filters.posted !== DEFAULT_POSTED_WITHIN ||
+      filters.sort !== 'fit_score'
+  );
 }

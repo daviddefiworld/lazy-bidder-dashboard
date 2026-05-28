@@ -7,6 +7,8 @@ interface CompanyReportActionsProps {
   analyzeBusy: boolean;
   grokReady: boolean;
   connectedExtension: boolean;
+  canAskGrok: boolean;
+  canAnalyze: boolean;
   onAskGrok: () => void;
   onAnalyze: () => void;
   onRefresh: () => void;
@@ -23,6 +25,8 @@ const CompanyReportActions: React.FC<CompanyReportActionsProps> = ({
   analyzeBusy,
   grokReady,
   connectedExtension,
+  canAskGrok,
+  canAnalyze,
   onAskGrok,
   onAnalyze,
   onRefresh
@@ -46,30 +50,34 @@ const CompanyReportActions: React.FC<CompanyReportActionsProps> = ({
           </svg>
         </a>
       ) : null}
-      <button
-        type="button"
-        onClick={onAnalyze}
-        disabled={analyzeBusy || !grokReady || grokPending}
-        title={grokPending ? 'Wait for Grok research to finish' : analyzeTitle}
-        className={`${primaryBtn} bg-slate-900 text-white hover:bg-slate-800`}
-      >
-        {analyzeBusy ? 'Analyzing…' : 'Analyze'}
-      </button>
-      <button
-        type="button"
-        onClick={onAskGrok}
-        disabled={grokPending || !connectedExtension}
-        title={
-          !connectedExtension
-            ? 'Connect extension first'
-            : grokPending
-              ? 'Extension is running your Grok order…'
-              : undefined
-        }
-        className={`${primaryBtn} bg-violet-700 text-white hover:bg-violet-800`}
-      >
-        {grokPending ? 'Waiting for Grok…' : 'Ask Grok'}
-      </button>
+      {canAnalyze ? (
+        <button
+          type="button"
+          onClick={onAnalyze}
+          disabled={analyzeBusy || !grokReady || grokPending}
+          title={grokPending ? 'Wait for Grok research to finish' : analyzeTitle}
+          className={`${primaryBtn} bg-slate-900 text-white hover:bg-slate-800`}
+        >
+          {analyzeBusy ? 'Analyzing…' : 'Analyze'}
+        </button>
+      ) : null}
+      {canAskGrok ? (
+        <button
+          type="button"
+          onClick={onAskGrok}
+          disabled={grokPending || !connectedExtension}
+          title={
+            !connectedExtension
+              ? 'Connect extension first'
+              : grokPending
+                ? 'Extension is running your Grok order…'
+                : undefined
+          }
+          className={`${primaryBtn} bg-violet-700 text-white hover:bg-violet-800`}
+        >
+          {grokPending ? 'Waiting for Grok…' : 'Ask Grok'}
+        </button>
+      ) : null}
       <a
         href={`https://www.indeed.com/cmp/${company.companypage}`}
         target="_blank"

@@ -7,16 +7,19 @@ import ListLayoutToggle from '../components/crawl/ListLayoutToggle';
 import { RefreshIconButton } from '../components/crawl/ListPageIcons';
 import PaginationBar from '../components/crawl/PaginationBar';
 import RatingStars from '../components/crawl/RatingStars';
+import RelevanceScore from '../components/company/RelevanceScore';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import apiService from '../services/apiService';
 import type { IndeedJob, JobListSort } from '../types/crawl';
 import { jobDetailPath, jsonItemsToLabels } from '../utils/crawlUtils';
 import { formatJobPublished } from '../utils/formatters';
-import { parseListView, stickyFilterPanelClass, type ListViewLayout } from '../components/crawl/listPageStyles';
+import { stickyFilterPanelClass, type ListViewLayout } from '../components/crawl/listPageStyles';
 import {
+  jobsFiltersDifferFromDefaults,
   mergeJobsUrlWithPreferences,
   saveJobsListPreferences
 } from '../utils/jobsListPreferences';
+import { writePostedParam } from '../utils/postedFilterPreference';
 
 const PAGE_SIZE = 25;
 const DEFAULT_VIEW: ListViewLayout = 'list';
@@ -31,15 +34,14 @@ type JobsUrlState = {
 };
 
 function readJobsUrlState(params: URLSearchParams): JobsUrlState {
-  const sortRaw = params.get('sort')?.toLowerCase();
+  const merged = mergeJobsUrlWithPreferences(params);
   return {
-    q: params.get('q') ?? '',
+    q: merged.q,
     page: Math.max(1, parseInt(params.get('page') ?? '1', 10) || 1),
-    sort:
-      sortRaw === 'relevant' ? 'relevant' : sortRaw === 'title' ? 'title' : 'date',
-    posted: params.get('posted') ?? DEFAULT_POSTED_WITHIN,
-    skills: params.get('skills') ?? '',
-    view: parseListView(params.get('view'), DEFAULT_VIEW)
+    sort: merged.sort,
+    posted: merged.posted,
+    skills: merged.skills,
+    view: merged.view
   };
 }
 
@@ -47,9 +49,8 @@ function writeJobsUrlState(state: JobsUrlState): URLSearchParams {
   const next = new URLSearchParams();
   if (state.q.trim()) next.set('q', state.q.trim());
   if (state.page > 1) next.set('page', String(state.page));
-  if (state.sort === 'relevant') next.set('sort', 'relevant');
-  if (state.sort === 'title') next.set('sort', 'title');
-  next.set('posted', state.posted);
+  next.set('sort', state.sort);
+  writePostedParam(next, state.posted);
   if (state.skills.trim()) next.set('skills', state.skills.trim());
   if (state.view !== DEFAULT_VIEW) next.set('view', state.view);
   return next;
@@ -65,7 +66,6 @@ const JobsPage: React.FC = () => {
 
   const [searchInput, setSearchInput] = useState(() => readInitialJobsFilters().q);
   const [skillsInput, setSkillsInput] = useState(() => readInitialJobsFilters().skills);
-  const [sort, setSort] = useState<JobListSort>(() => readInitialJobsFilters().sort);
   const [postedWithin, setPostedWithin] = useState(() => readInitialJobsFilters().posted);
   const [urlReady, setUrlReady] = useState(false);
 
@@ -79,11 +79,11 @@ const JobsPage: React.FC = () => {
 
   const offset = (url.page - 1) * PAGE_SIZE;
   const effectiveSort: JobListSort =
-    sort === 'relevant'
-      ? debouncedSearch.trim()
+    url.sort === 'relevant'
+      ? url.q.trim()
         ? 'relevant'
-        : 'date'
-      : sort;
+        : 'fit_score'
+      : url.sort;
 
   const syncUrl = useCallback(
     (state: JobsUrlState) => {
@@ -99,7 +99,6 @@ const JobsPage: React.FC = () => {
 
     setSearchInput(prefs.q);
     setSkillsInput(prefs.skills);
-    setSort(prefs.sort);
     setPostedWithin(prefs.posted);
 
     const target: JobsUrlState = {
@@ -118,7 +117,9 @@ const JobsPage: React.FC = () => {
   }, [setSearchParams]);
 
   useEffect(() => {
-    const savedSort: JobListSort = sort === 'relevant' && !searchInput.trim() ? 'date' : sort;
+    if (!urlReady) return;
+    const savedSort: JobListSort =
+      url.sort === 'relevant' && !searchInput.trim() ? 'fit_score' : url.sort;
     saveJobsListPreferences({
       q: searchInput,
       skills: skillsInput,
@@ -126,23 +127,21 @@ const JobsPage: React.FC = () => {
       posted: postedWithin,
       view: url.view
     });
-  }, [searchInput, skillsInput, sort, postedWithin, url.view]);
+  }, [urlReady, searchInput, skillsInput, url.sort, postedWithin, url.view]);
 
   useEffect(() => {
     if (debouncedSearch !== searchInput || debouncedSkills !== skillsInput) return;
 
-    const nextSort: JobListSort = sort === 'relevant' && !debouncedSearch.trim() ? 'date' : sort;
     const filtersChanged =
       debouncedSearch !== url.q ||
       debouncedSkills !== url.skills ||
-      postedWithin !== url.posted ||
-      nextSort !== url.sort;
+      postedWithin !== url.posted;
     if (!filtersChanged) return;
 
     syncUrl({
       q: debouncedSearch,
       page: 1,
-      sort: nextSort,
+      sort: url.sort,
       posted: postedWithin,
       skills: debouncedSkills,
       view: url.view
@@ -152,7 +151,6 @@ const JobsPage: React.FC = () => {
     debouncedSkills,
     searchInput,
     skillsInput,
-    sort,
     postedWithin,
     url.q,
     url.skills,
@@ -162,11 +160,30 @@ const JobsPage: React.FC = () => {
     syncUrl
   ]);
 
-  useEffect(() => {
-    if (sort === 'relevant' && !url.q.trim()) {
-      setSort('date');
-    }
-  }, [sort, url.q]);
+  const handleSortChange = (next: JobListSort) => {
+    const sort =
+      next === 'relevant' && !url.q.trim() ? 'fit_score' : next;
+    syncUrl({
+      q: url.q,
+      page: 1,
+      sort,
+      posted: postedWithin,
+      skills: url.skills,
+      view: url.view
+    });
+  };
+
+  const handlePostedWithinChange = (posted: string) => {
+    setPostedWithin(posted);
+    syncUrl({
+      q: url.q,
+      page: 1,
+      sort: url.sort,
+      posted,
+      skills: url.skills,
+      view: url.view
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -220,19 +237,25 @@ const JobsPage: React.FC = () => {
     });
   };
 
-  const hasActiveFilters = Boolean(
-    url.q ||
-      url.skills ||
-      (url.posted && url.posted !== DEFAULT_POSTED_WITHIN) ||
-      url.sort === 'relevant'
-  );
+  const hasActiveFilters = jobsFiltersDifferFromDefaults({
+    q: searchInput,
+    skills: skillsInput,
+    posted: postedWithin,
+    sort: url.sort
+  });
 
   const clearFilters = () => {
     setSearchInput('');
     setSkillsInput('');
-    setPostedWithin('');
-    setSort('date');
-    syncUrl({ q: '', page: 1, sort: 'date', posted: '', skills: '', view: url.view });
+    setPostedWithin(DEFAULT_POSTED_WITHIN);
+    syncUrl({
+      q: '',
+      page: 1,
+      sort: 'fit_score',
+      posted: DEFAULT_POSTED_WITHIN,
+      skills: '',
+      view: url.view
+    });
   };
 
   const listClass = loading ? 'opacity-60 pointer-events-none' : '';
@@ -253,10 +276,10 @@ const JobsPage: React.FC = () => {
         <JobsFilterBar
           search={searchInput}
           onSearchChange={setSearchInput}
-          sort={sort}
-          onSortChange={setSort}
+          sort={url.sort}
+          onSortChange={handleSortChange}
           postedWithin={postedWithin}
-          onPostedWithinChange={setPostedWithin}
+          onPostedWithinChange={handlePostedWithinChange}
           skills={skillsInput}
           onSkillsChange={setSkillsInput}
           hasActiveFilters={hasActiveFilters}
@@ -349,11 +372,16 @@ const JobCard: React.FC<{ job: IndeedJob; highlightSkills?: string }> = ({ job, 
         <h3 className="text-base font-semibold text-slate-900 group-hover:text-primary-800 line-clamp-2 min-w-0">
           {job.title || job.normalized_title || 'Untitled job'}
         </h3>
-        {job.expired === 1 ? (
-          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-            Expired
-          </span>
-        ) : null}
+        <div className="shrink-0 flex flex-col items-end gap-1">
+          {job.company_fit_score != null ? (
+            <RelevanceScore score={job.company_fit_score} size="sm" />
+          ) : null}
+          {job.expired === 1 ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Expired
+            </span>
+          ) : null}
+        </div>
       </div>
       <p className="text-sm font-medium text-slate-700 line-clamp-1">{job.company_name || 'Unknown company'}</p>
       {location ? <p className="text-sm text-slate-500 mt-0.5 line-clamp-1">{location}</p> : null}
@@ -462,6 +490,9 @@ const JobRow: React.FC<{ job: IndeedJob; highlightSkills?: string }> = ({
           ) : null}
         </div>
         <div className="shrink-0 flex flex-col items-start sm:items-end gap-2 text-xs text-slate-500">
+          {job.company_fit_score != null ? (
+            <RelevanceScore score={job.company_fit_score} size="sm" />
+          ) : null}
           {published ? (
             <span
               className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700"

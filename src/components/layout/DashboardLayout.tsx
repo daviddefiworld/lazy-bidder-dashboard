@@ -10,7 +10,7 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
 
 const DashboardLayout: React.FC = () => {
   const { isConnected } = useSocket();
-  const { logout } = useAuth();
+  const { logout, hasPermission, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isManageActive = location.pathname.startsWith('/manage');
@@ -40,16 +40,25 @@ const DashboardLayout: React.FC = () => {
               <NavLink to="/companies" className={navClass}>
                 Companies
               </NavLink>
-              <NavLink to="/extensions" className={navClass}>
-                Extensions
-              </NavLink>
-              <NavLink to="/manage/users" className={() => navClass({ isActive: isManageActive })}>
-                Manage
-              </NavLink>
+              {hasPermission('manage_extensions') ? (
+                <NavLink to="/extensions" className={navClass}>
+                  Extensions
+                </NavLink>
+              ) : null}
+              {hasPermission('manage_users') ||
+              hasPermission('manage_api_keys') ||
+              hasPermission('manage_actions') ? (
+                <NavLink to="/manage/users" className={() => navClass({ isActive: isManageActive })}>
+                  Manage
+                </NavLink>
+              ) : null}
             </nav>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-medium shrink-0">
+            <span className="hidden md:inline text-slate-500">
+              {user?.username ?? 'Unknown'} ({user?.role ?? 'user'})
+            </span>
             <span
               className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ring-1 ring-inset ${
                 isConnected

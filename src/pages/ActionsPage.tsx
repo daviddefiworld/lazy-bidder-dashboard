@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import PageHeader from '../components/layout/PageHeader';
 import apiService, {
   type CombineActionResult,
@@ -14,9 +14,28 @@ const btnClass =
 const refreshBtnClass =
   'rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition';
 
+const stopBtnClass =
+  'inline-flex items-center justify-center rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 shadow-sm hover:bg-red-50 disabled:opacity-50 disabled:pointer-events-none transition';
+
+const secondaryBtnClass =
+  'inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition';
+
+function formatDurationMs(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
+}
+
+const AVG_SAMPLE_SIZE = 20;
+
 const ActionsPage: React.FC = () => {
-  const [busy, setBusy] = useState<'companies' | 'jobs' | null>(null);
+  const [busy, setBusy] = useState<'companies' | 'jobs' | 'recombine-companies' | 'recombine-jobs' | null>(null);
   const [analyzerStarting, setAnalyzerStarting] = useState(false);
+  const [reanalyzerStarting, setReanalyzerStarting] = useState(false);
+  const [analyzerStopping, setAnalyzerStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<CombineActionResult | null>(null);
   const [lastLabel, setLastLabel] = useState<string | null>(null);
@@ -24,6 +43,12 @@ const ActionsPage: React.FC = () => {
   const [countsLoading, setCountsLoading] = useState(true);
   const [analyzerOverview, setAnalyzerOverview] = useState<CompanyAnalyzerBatchOverview | null>(null);
   const [analyzerLoading, setAnalyzerLoading] = useState(true);
+  const [analyzerWindowAvgMs, setAnalyzerWindowAvgMs] = useState<number | undefined>();
+  const analyzerAvgCheckpointRef = useRef<{
+    batchKey: string;
+    checkpointMs: number;
+    checkpointCompleted: number;
+  } | null>(null);
 
   const loadCounts = useCallback(async () => {
     setCountsLoading(true);
@@ -58,6 +83,7 @@ const ActionsPage: React.FC = () => {
     const onBatchUpdated = (data: { batch: CompanyBatchAnalyzeStatus }) => {
       setAnalyzerOverview((prev) => ({
         nonAnalyzed: prev?.nonAnalyzed ?? data.batch.remaining,
+        reanalyzeEligible: prev?.reanalyzeEligible ?? 0,
         batch: data.batch
       }));
       if (!data.batch.running) {
@@ -79,8 +105,62 @@ const ActionsPage: React.FC = () => {
     return () => window.clearInterval(interval);
   }, [analyzerOverview?.batch.running, loadAnalyzerOverview]);
 
-  const run = async (kind: 'companies' | 'jobs') => {
-    const label = kind === 'companies' ? 'Combine companies' : 'Combine jobs';
+  useEffect(() => {
+    const batch = analyzerOverview?.batch;
+    if (!batch?.startedAt) {
+      setAnalyzerWindowAvgMs(undefined);
+      analyzerAvgCheckpointRef.current = null;
+      return;
+    }
+
+    const batchKey = batch.startedAt;
+    const startMs = new Date(batch.startedAt).getTime();
+    if (!Number.isFinite(startMs)) return;
+
+    const endMs = batch.running
+      ? Date.now()
+      : batch.finishedAt
+        ? new Date(batch.finishedAt).getTime()
+        : Date.now();
+    if (!Number.isFinite(endMs)) return;
+
+    const ref = analyzerAvgCheckpointRef.current;
+    if (!ref || ref.batchKey !== batchKey) {
+      analyzerAvgCheckpointRef.current = {
+        batchKey,
+        checkpointMs: startMs,
+        checkpointCompleted: 0
+      };
+      setAnalyzerWindowAvgMs(undefined);
+    }
+
+    const checkpoint = analyzerAvgCheckpointRef.current!;
+    const windowsDone = Math.floor(batch.completed / AVG_SAMPLE_SIZE);
+    const windowsRecorded = Math.floor(checkpoint.checkpointCompleted / AVG_SAMPLE_SIZE);
+    if (windowsDone > windowsRecorded) {
+      const companiesInWindow = AVG_SAMPLE_SIZE * (windowsDone - windowsRecorded);
+      const elapsed = endMs - checkpoint.checkpointMs;
+      if (elapsed > 0) {
+        setAnalyzerWindowAvgMs(Math.round(elapsed / companiesInWindow));
+      }
+      checkpoint.checkpointMs = endMs;
+      checkpoint.checkpointCompleted = windowsDone * AVG_SAMPLE_SIZE;
+    }
+  }, [
+    analyzerOverview?.batch?.startedAt,
+    analyzerOverview?.batch?.completed,
+    analyzerOverview?.batch?.running,
+    analyzerOverview?.batch?.finishedAt
+  ]);
+
+  const run = async (kind: 'companies' | 'jobs' | 'recombine-companies' | 'recombine-jobs') => {
+    const labelByKind: Record<typeof kind, string> = {
+      companies: 'Combine companies',
+      jobs: 'Combine jobs',
+      'recombine-companies': 'Recombine companies',
+      'recombine-jobs': 'Recombine jobs'
+    };
+    const label = labelByKind[kind];
     setBusy(kind);
     setError(null);
     setLastResult(null);
@@ -90,7 +170,11 @@ const ActionsPage: React.FC = () => {
       const data =
         kind === 'companies'
           ? await apiService.combineCrawlCompanies()
-          : await apiService.combineCrawlJobs();
+          : kind === 'jobs'
+            ? await apiService.combineCrawlJobs()
+            : kind === 'recombine-companies'
+              ? await apiService.recombineCrawlCompanies()
+              : await apiService.recombineCrawlJobs();
       setLastResult(data);
       setLastLabel(label);
       await loadCounts();
@@ -114,11 +198,44 @@ const ActionsPage: React.FC = () => {
     }
   };
 
+  const runReanalyzer = async () => {
+    setReanalyzerStarting(true);
+    setError(null);
+    try {
+      const data = await apiService.startCompanyReanalyzerBatch();
+      setAnalyzerOverview(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start reanalyze batch');
+    } finally {
+      setReanalyzerStarting(false);
+    }
+  };
+
+  const stopAnalyzer = async () => {
+    setAnalyzerStopping(true);
+    setError(null);
+    try {
+      const data = await apiService.stopCompanyAnalyzerBatch();
+      setAnalyzerOverview(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to stop analyzer batch');
+    } finally {
+      setAnalyzerStopping(false);
+    }
+  };
+
   const analyzerBatch = analyzerOverview?.batch;
   const analyzerRunning = Boolean(analyzerBatch?.running);
   const analyzerDone = (analyzerBatch?.completed ?? 0) + (analyzerBatch?.failed ?? 0);
   const analyzerTotal = analyzerBatch?.total ?? 0;
   const analyzerProgress = analyzerTotal > 0 ? Math.round((analyzerDone / analyzerTotal) * 100) : 0;
+  const analyzerEtaMs =
+    analyzerRunning &&
+    analyzerBatch &&
+    analyzerWindowAvgMs != null &&
+    analyzerBatch.remaining > 0
+      ? analyzerBatch.remaining * analyzerWindowAvgMs
+      : undefined;
 
   return (
     <div>
@@ -191,14 +308,24 @@ const ActionsPage: React.FC = () => {
             matches, create a new combined record otherwise, and merge duplicate combined companies.
             Only uncombined source rows are scanned for new attachments.
           </p>
-          <button
-            type="button"
-            className={`${btnClass} mt-3`}
-            disabled={busy !== null}
-            onClick={() => void run('companies')}
-          >
-            {busy === 'companies' ? 'Combining…' : 'Combine companies'}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnClass}
+              disabled={busy !== null}
+              onClick={() => void run('companies')}
+            >
+              {busy === 'companies' ? 'Combining…' : 'Combine companies'}
+            </button>
+            <button
+              type="button"
+              className={secondaryBtnClass}
+              disabled={busy !== null}
+              onClick={() => void run('recombine-companies')}
+            >
+              {busy === 'recombine-companies' ? 'Recombining…' : 'Recombine companies'}
+            </button>
+          </div>
         </div>
 
         <hr className="border-slate-100" />
@@ -213,7 +340,11 @@ const ActionsPage: React.FC = () => {
             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-medium">
-                  {analyzerRunning ? 'Analyzer running' : 'Last analyzer run'}
+                  {analyzerRunning
+                    ? 'Analyzer running'
+                    : analyzerBatch.stopped
+                      ? 'Analyzer stopped'
+                      : 'Last analyzer run'}
                 </span>
                 <span className="tabular-nums">{analyzerProgress}%</span>
               </div>
@@ -224,10 +355,20 @@ const ActionsPage: React.FC = () => {
                 />
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                {analyzerBatch.completed.toLocaleString()} completed,{' '}
-                {analyzerBatch.failed.toLocaleString()} failed,{' '}
-                {analyzerBatch.remaining.toLocaleString()} remaining
+                {analyzerBatch.completed.toLocaleString()} completed ·{' '}
+                {analyzerBatch.failed.toLocaleString()} failed ·{' '}
+                {analyzerBatch.remaining.toLocaleString()} left
               </p>
+              {analyzerWindowAvgMs != null ? (
+                <p className="mt-1 text-xs text-slate-600">
+                  ~{formatDurationMs(analyzerWindowAvgMs)} each (last {AVG_SAMPLE_SIZE})
+                  {analyzerEtaMs != null ? ` · ~${formatDurationMs(analyzerEtaMs)} left` : ''}
+                </p>
+              ) : analyzerBatch.completed > 0 && analyzerBatch.completed < AVG_SAMPLE_SIZE ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Pace after {AVG_SAMPLE_SIZE} completed
+                </p>
+              ) : null}
               {analyzerBatch.current ? (
                 <p className="mt-1 text-xs text-slate-500">
                   Current: {analyzerBatch.current.company_name || analyzerBatch.current.companypage}{' '}
@@ -239,24 +380,69 @@ const ActionsPage: React.FC = () => {
               ) : null}
             </div>
           ) : null}
-          <button
-            type="button"
-            className={`${btnClass} mt-3`}
-            disabled={
-              busy !== null ||
-              analyzerStarting ||
-              analyzerRunning ||
-              analyzerLoading ||
-              (analyzerOverview?.nonAnalyzed ?? 0) === 0
-            }
-            onClick={() => void runAnalyzer()}
-          >
-            {analyzerRunning
-              ? 'Analyzing…'
-              : analyzerStarting
-                ? 'Starting…'
-                : 'Analyze companies'}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnClass}
+              disabled={
+                busy !== null ||
+                analyzerStarting ||
+                reanalyzerStarting ||
+                analyzerStopping ||
+                analyzerRunning ||
+                analyzerLoading ||
+                (analyzerOverview?.nonAnalyzed ?? 0) === 0
+              }
+              onClick={() => void runAnalyzer()}
+            >
+              {analyzerRunning
+                ? 'Batch running…'
+                : analyzerStarting
+                  ? 'Starting…'
+                  : 'Analyze companies'}
+            </button>
+            <button
+              type="button"
+              className={secondaryBtnClass}
+              disabled={
+                busy !== null ||
+                analyzerStarting ||
+                reanalyzerStarting ||
+                analyzerStopping ||
+                analyzerRunning ||
+                analyzerLoading ||
+                (analyzerOverview?.reanalyzeEligible ?? 0) === 0
+              }
+              onClick={() => void runReanalyzer()}
+            >
+              {analyzerRunning
+                ? 'Batch running…'
+                : reanalyzerStarting
+                  ? 'Starting…'
+                  : 'Reanalyze companies'}
+            </button>
+            {analyzerRunning ? (
+              <button
+                type="button"
+                className={stopBtnClass}
+                disabled={
+                  busy !== null ||
+                  analyzerStarting ||
+                  reanalyzerStarting ||
+                  analyzerStopping ||
+                  analyzerLoading
+                }
+                onClick={() => void stopAnalyzer()}
+              >
+                {analyzerStopping ? 'Stopping…' : 'Stop'}
+              </button>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Reanalyze runs local AI only on employers that already have Grok research (
+            {(analyzerOverview?.reanalyzeEligible ?? 0).toLocaleString()} eligible), up to 4 in
+            parallel. No new Grok searches.
+          </p>
         </div>
 
         <hr className="border-slate-100" />
@@ -267,14 +453,24 @@ const ActionsPage: React.FC = () => {
             Attach new postings to an existing combined job when employer, title, and location match,
             or create a new combined record. Only uncombined source rows are scanned.
           </p>
-          <button
-            type="button"
-            className={`${btnClass} mt-3`}
-            disabled={busy !== null}
-            onClick={() => void run('jobs')}
-          >
-            {busy === 'jobs' ? 'Combining…' : 'Combine jobs'}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnClass}
+              disabled={busy !== null}
+              onClick={() => void run('jobs')}
+            >
+              {busy === 'jobs' ? 'Combining…' : 'Combine jobs'}
+            </button>
+            <button
+              type="button"
+              className={secondaryBtnClass}
+              disabled={busy !== null}
+              onClick={() => void run('recombine-jobs')}
+            >
+              {busy === 'recombine-jobs' ? 'Recombining…' : 'Recombine jobs'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

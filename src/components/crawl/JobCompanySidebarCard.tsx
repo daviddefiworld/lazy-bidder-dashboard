@@ -27,8 +27,13 @@ const JobCompanySidebarCard: React.FC<JobCompanySidebarCardProps> = ({
   const name = company?.company_name || companyName || 'Unknown company';
   const rating = company?.rating ?? jobRating;
   const reviewCount = company?.review_count ?? jobReviewCount;
-  const detailLink =
-    companyPage && platform ? companyDetailPath(platform, companyPage) : null;
+  const pageSlug = (company?.companypage || companyPage)?.trim() || undefined;
+  const detailLink = platform
+    ? companyDetailPath(platform, {
+        companypage: pageSlug,
+        company_name: pageSlug ? undefined : name
+      })
+    : null;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
@@ -92,9 +97,9 @@ const JobCompanySidebarCard: React.FC<JobCompanySidebarCardProps> = ({
                 Company profile
               </Link>
             ) : null}
-            {companyPage ? (
+            {pageSlug ? (
               <a
-                href={`https://www.indeed.com${companyPage}`}
+                href={`https://www.indeed.com${pageSlug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-center rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition"

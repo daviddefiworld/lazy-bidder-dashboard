@@ -21,11 +21,28 @@ export function formatRating(rating: number | null | undefined): string {
   return rating.toFixed(1);
 }
 
-export function companyDetailPath(platform: string, companypage: string): string {
-  const params = new URLSearchParams({
-    platform,
-    companypage
-  });
+export type CompanyDetailLinkOpts = {
+  companypage?: string | null;
+  company_name?: string | null;
+};
+
+/** Company detail URL — prefers slug when present, otherwise links by company name. */
+export function companyDetailPath(platform: string, opts: CompanyDetailLinkOpts): string | null {
+  const plat = platform?.trim();
+  if (!plat) return null;
+
+  const page = opts.companypage?.trim();
+  const name = opts.company_name?.trim();
+  const params = new URLSearchParams({ platform: plat });
+
+  if (page) {
+    params.set('companypage', page);
+  } else if (name) {
+    params.set('company_name', name);
+  } else {
+    return null;
+  }
+
   return `/companies/detail?${params.toString()}`;
 }
 

@@ -1,7 +1,8 @@
-import { DEFAULT_POSTED_WITHIN, POSTED_WITHIN_OPTIONS } from '../components/crawl/JobsFilterBar';
+import { DEFAULT_POSTED_WITHIN } from '../components/crawl/JobsFilterBar';
 import type { ListViewLayout } from '../components/crawl/listPageStyles';
 import { parseListView } from '../components/crawl/listPageStyles';
 import type { CompanyIgnoredFilter, CompanyListSort, ListSortOrder } from '../types/crawl';
+import { resolvePostedFilter, writePostedParam } from './postedFilterPreference';
 
 export const COMPANIES_LIST_PREFERENCES_KEY = 'lazybidder_companies_list_prefs';
 
@@ -16,13 +17,8 @@ export type CompaniesListPreferences = {
   view: ListViewLayout;
 };
 
-const POSTED_VALUES = new Set<string>(POSTED_WITHIN_OPTIONS.map((o) => o.value));
-
 function parsePosted(raw: unknown): string {
-  if (typeof raw === 'string' && POSTED_VALUES.has(raw)) {
-    return raw;
-  }
-  return DEFAULT_POSTED_WITHIN;
+  return resolvePostedFilter(new URLSearchParams(), typeof raw === 'string' ? raw : undefined);
 }
 
 function parseIgnored(raw: unknown): CompanyIgnoredFilter {
@@ -31,8 +27,8 @@ function parseIgnored(raw: unknown): CompanyIgnoredFilter {
 }
 
 function parseSort(raw: unknown): CompanyListSort {
-  if (raw === 'jobs' || raw === 'founded' || raw === 'fit_score') return raw;
-  return 'updated';
+  if (raw === 'jobs' || raw === 'founded' || raw === 'updated') return raw;
+  return 'fit_score';
 }
 
 function parseOrder(raw: unknown): ListSortOrder {
@@ -47,8 +43,6 @@ export function companiesUrlHasExplicitFilters(params: URLSearchParams): boolean
   if (params.has('view')) return true;
   const page = params.get('page');
   if (page && page !== '1') return true;
-  const posted = params.get('posted');
-  if (posted != null && posted !== '' && posted !== DEFAULT_POSTED_WITHIN) return true;
   return false;
 }
 
@@ -78,32 +72,61 @@ export function saveCompaniesListPreferences(prefs: CompaniesListPreferences): v
   }
 }
 
-function readFromUrl(params: URLSearchParams): CompaniesListPreferences {
-  const sortRaw = params.get('sort');
+function readFromUrl(params: URLSearchParams, stored?: CompaniesListPreferences | null): CompaniesListPreferences {
   return {
     q: params.get('q') ?? '',
-    posted: params.has('posted') ? (params.get('posted') ?? DEFAULT_POSTED_WITHIN) : DEFAULT_POSTED_WITHIN,
-    ignored: parseIgnored(params.get('ignored')),
-    sort: parseSort(sortRaw),
-    order: parseOrder(params.get('order')),
+    posted: resolvePostedFilter(params, stored?.posted),
+    ignored: resolveCompaniesIgnored(params, stored?.ignored),
+    sort: resolveCompaniesSort(params),
+    order: resolveCompaniesOrder(params),
     view: parseListView(params.get('view'), DEFAULT_VIEW)
   };
 }
 
+function sortFromUrl(params: URLSearchParams): CompanyListSort | null {
+  if (!params.has('sort')) return null;
+  return parseSort(params.get('sort'));
+}
+
+function orderFromUrl(params: URLSearchParams): ListSortOrder | null {
+  if (!params.has('order')) return null;
+  return parseOrder(params.get('order'));
+}
+
+/** Read sort from URL; missing param means default fit_score. */
+export function resolveCompaniesSort(params: URLSearchParams): CompanyListSort {
+  return sortFromUrl(params) ?? 'fit_score';
+}
+
+/** Read order from URL; missing param means default desc. */
+export function resolveCompaniesOrder(params: URLSearchParams): ListSortOrder {
+  return orderFromUrl(params) ?? 'desc';
+}
+
+export function resolveCompaniesIgnored(
+  params: URLSearchParams,
+  storedIgnored?: CompanyIgnoredFilter
+): CompanyIgnoredFilter {
+  if (params.has('ignored')) return parseIgnored(params.get('ignored'));
+  if (!companiesUrlHasExplicitFilters(params) && storedIgnored) return storedIgnored;
+  return 'hide';
+}
+
 export function mergeCompaniesUrlWithPreferences(params: URLSearchParams): CompaniesListPreferences {
-  const fromUrl = readFromUrl(params);
+  const stored = readCompaniesListPreferences();
+  const fromUrl = readFromUrl(params, stored);
   if (companiesUrlHasExplicitFilters(params)) {
     return fromUrl;
   }
-  const stored = readCompaniesListPreferences();
-  return stored ?? fromUrl;
+  return stored ? { ...stored, posted: fromUrl.posted } : fromUrl;
 }
 
 export type CompaniesUrlState = CompaniesListPreferences & { page: number };
 
 export function readCompaniesUrlState(params: URLSearchParams): CompaniesUrlState {
+  const stored = readCompaniesListPreferences();
   return {
-    ...readFromUrl(params),
+    ...readFromUrl(params, stored),
     page: Math.max(1, parseInt(params.get('page') ?? '1', 10) || 1)
   };
 }
@@ -111,11 +134,28 @@ export function readCompaniesUrlState(params: URLSearchParams): CompaniesUrlStat
 export function writeCompaniesUrlState(state: CompaniesUrlState): URLSearchParams {
   const next = new URLSearchParams();
   if (state.q.trim()) next.set('q', state.q.trim());
-  next.set('posted', state.posted);
+  writePostedParam(next, state.posted);
   if (state.ignored !== 'hide') next.set('ignored', state.ignored);
-  if (state.sort !== 'updated') next.set('sort', state.sort);
+  next.set('sort', state.sort);
   if (state.order !== 'desc') next.set('order', state.order);
   if (state.view !== DEFAULT_VIEW) next.set('view', state.view);
   if (state.page > 1) next.set('page', String(state.page));
   return next;
+}
+
+/** True when any filter differs from page defaults (for Clear button). */
+export function companiesFiltersDifferFromDefaults(filters: {
+  q: string;
+  posted: string;
+  ignored: CompanyIgnoredFilter;
+  sort: CompanyListSort;
+  order: ListSortOrder;
+}): boolean {
+  return Boolean(
+    filters.q.trim() ||
+      filters.posted !== DEFAULT_POSTED_WITHIN ||
+      filters.ignored !== 'hide' ||
+      filters.sort !== 'fit_score' ||
+      filters.order !== 'desc'
+  );
 }

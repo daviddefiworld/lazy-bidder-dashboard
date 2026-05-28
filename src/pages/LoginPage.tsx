@@ -39,7 +39,7 @@ const LoginPage: React.FC = () => {
             LB
           </div>
           <h1 className="text-lg font-semibold text-slate-900">LazyBidder</h1>
-          <p className="mt-1 text-sm text-slate-500">Sign in with your admin account</p>
+          <p className="mt-1 text-sm text-slate-500">Sign in with your dashboard account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -83,6 +83,7 @@ const JobsFilterBar: React.FC<JobsFilterBarProps> = ({
         className={`${filterSelectClass} min-w-[10.5rem] flex-[0_0_auto]`}
         aria-label="Sort"
       >
+        <option value="fit_score">Fit score</option>
         <option value="date">Date (newest)</option>
         <option value="title">Job name (A–Z)</option>
         <option value="relevant" disabled={relevantDisabled}>

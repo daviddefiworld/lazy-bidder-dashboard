@@ -10,6 +10,7 @@ interface CompanyGrokTabProps {
   grokOrderStatus?: 'pending' | 'executing' | null;
   onAskGrok: () => void;
   extensionHint?: string;
+  canAskGrok?: boolean;
 }
 
 const CompanyGrokTab: React.FC<CompanyGrokTabProps> = ({
@@ -17,7 +18,8 @@ const CompanyGrokTab: React.FC<CompanyGrokTabProps> = ({
   grokBusy,
   grokOrderStatus,
   onAskGrok,
-  extensionHint
+  extensionHint,
+  canAskGrok = true
 }) => {
   const isPending = grokBusy || grok.status === 'pending';
 
@@ -59,6 +61,7 @@ const CompanyGrokTab: React.FC<CompanyGrokTabProps> = ({
           <button
             type="button"
             onClick={onAskGrok}
+            disabled={!canAskGrok}
             className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-50"
           >
             Try again
@@ -79,7 +82,7 @@ const CompanyGrokTab: React.FC<CompanyGrokTabProps> = ({
           <button
             type="button"
             onClick={onAskGrok}
-            disabled={grokBusy}
+            disabled={grokBusy || !canAskGrok}
             className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-50 disabled:opacity-50"
           >
             Refresh

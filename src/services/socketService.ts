@@ -80,16 +80,23 @@ class SocketService {
   connect(serverUrl: string, options?: { token?: string }): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        if (this.socket) {
+          this.disconnect();
+        }
         const auth: Record<string, unknown> = {};
         if (options?.token) {
           auth.token = options.token;
         }
+        let settled = false;
 
         this.socket = io(serverUrl, {
           auth,
           transports: ['websocket', 'polling'],
           timeout: 20000,
-          forceNew: true
+          forceNew: true,
+          reconnection: true,
+          reconnectionAttempts: this.maxReconnectAttempts,
+          reconnectionDelay: this.reconnectDelay
         });
 
         this.socket.on('connect', () => {
@@ -99,7 +106,10 @@ class SocketService {
 
           this.emit('frontend:connect');
 
-          resolve();
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
         });
 
         this.socket.on('disconnect', (reason) => {
@@ -111,7 +121,10 @@ class SocketService {
         this.socket.on('connect_error', (error) => {
           console.error('Socket connection error:', error);
           this.isConnected = false;
-          reject(error);
+          if (!settled) {
+            settled = true;
+            reject(error);
+          }
         });
 
         this.socket.on('frontend:connected', (data) => {

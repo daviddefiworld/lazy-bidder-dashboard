@@ -19,6 +19,7 @@ interface CompanyDetailSidebarProps {
   connectedExtension: boolean;
   extensionHint?: string;
   contactLinks: ContactLink[];
+  canSetIgnored: boolean;
   onIgnoredChange: (ignored: boolean) => void;
   ignoredSaving: boolean;
   ignoredError: string | null;
@@ -41,6 +42,7 @@ const CompanyDetailSidebar: React.FC<CompanyDetailSidebarProps> = ({
   connectedExtension,
   extensionHint,
   contactLinks,
+  canSetIgnored,
   onIgnoredChange,
   ignoredSaving,
   ignoredError
@@ -157,7 +159,7 @@ const CompanyDetailSidebar: React.FC<CompanyDetailSidebarProps> = ({
           <p className="text-sm text-slate-600">Hide jobs from this employer</p>
           <button
             type="button"
-            disabled={ignoredSaving}
+            disabled={ignoredSaving || !canSetIgnored}
             onClick={() => onIgnoredChange(!company.ignored)}
             className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
               company.ignored
@@ -168,6 +170,9 @@ const CompanyDetailSidebar: React.FC<CompanyDetailSidebarProps> = ({
             {ignoredSaving ? '…' : company.ignored ? 'Unignore' : 'Ignore'}
           </button>
         </div>
+        {!canSetIgnored ? (
+          <p className="mt-2 text-xs text-slate-500">Only admins can change ignored status.</p>
+        ) : null}
         {ignoredError ? (
           <p className="mt-2 text-xs text-red-700">{ignoredError}</p>
         ) : null}
