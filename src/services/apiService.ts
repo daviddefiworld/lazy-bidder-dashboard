@@ -12,6 +12,17 @@ import type {
 import type { ActionOrder } from '../types/actionOrder';
 import type { CompanyAnalyzer, GrokResearchStartResult } from '../types/companyResearch';
 import type { AuthUser, DashboardPermission } from '../types/auth';
+import type {
+  LogUserActivityInput,
+  UserActivityBaseParams,
+  UserActivityDailyResult,
+  UserActivityLogParams,
+  UserActivityLogResult,
+  UserActivitySummaryRow,
+  UserActivityUserOption
+} from '../types/userActivity';
+
+export type { LogUserActivityInput } from '../types/userActivity';
 
 export interface Extension {
   _id: string;
@@ -205,6 +216,26 @@ class ApiService {
 
   async getSession(): Promise<{ user: AuthUser }> {
     return this.axiosInstance.get('/api/auth/session');
+  }
+
+  async logUserActivity(input: LogUserActivityInput): Promise<void> {
+    await this.axiosInstance.post('/api/activity', input);
+  }
+
+  async listUserActivityLog(params?: UserActivityLogParams): Promise<UserActivityLogResult> {
+    return this.axiosInstance.get('/api/activity/log', { params });
+  }
+
+  async getUserActivitySummary(params?: UserActivityBaseParams): Promise<UserActivitySummaryRow[]> {
+    return this.axiosInstance.get('/api/activity/summary', { params });
+  }
+
+  async getUserActivityDaily(params?: UserActivityBaseParams): Promise<UserActivityDailyResult> {
+    return this.axiosInstance.get('/api/activity/daily', { params });
+  }
+
+  async getUserActivityUsers(params?: UserActivityBaseParams): Promise<UserActivityUserOption[]> {
+    return this.axiosInstance.get('/api/activity/users', { params });
   }
 
   async listUsers(): Promise<DashboardUserRow[]> {

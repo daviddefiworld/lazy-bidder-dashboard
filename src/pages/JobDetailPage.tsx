@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Breadcrumbs from '../components/crawl/Breadcrumbs';
 import DetailSection from '../components/crawl/DetailSection';
@@ -9,6 +9,7 @@ import RatingStars from '../components/crawl/RatingStars';
 import SearchField from '../components/crawl/SearchField';
 import TagList from '../components/crawl/TagList';
 import apiService from '../services/apiService';
+import { useUserActivityLogger } from '../hooks/useUserActivityLogger';
 import type { IndeedCompany, IndeedJob } from '../types/crawl';
 import { companyDetailPath, countSearchMatches, jsonItemsToLabels } from '../utils/crawlUtils';
 import { formatDate, formatJobPublished } from '../utils/formatters';
@@ -16,6 +17,8 @@ import { formatDate, formatJobPublished } from '../utils/formatters';
 const RELATED_JOBS_LIMIT = 15;
 
 const JobDetailPage: React.FC = () => {
+  const logActivity = useUserActivityLogger();
+  const loggedJobIdRef = useRef<string | null>(null);
   const { jobId: jobIdParam } = useParams<{ jobId: string }>();
   const jobId = jobIdParam ? decodeURIComponent(jobIdParam) : '';
 
@@ -47,6 +50,23 @@ const JobDetailPage: React.FC = () => {
   useEffect(() => {
     void loadJob();
   }, [loadJob]);
+
+  useEffect(() => {
+    if (!job) return;
+    const id = job._id ?? job.job_id ?? jobId;
+    if (!id || loggedJobIdRef.current === id) return;
+    loggedJobIdRef.current = id;
+    logActivity({
+      action: 'view_job',
+      context: 'job',
+      details: {
+        jobId: id,
+        title: job.title,
+        company_name: job.company_name,
+        platform: job.platform
+      }
+    });
+  }, [job, jobId, logActivity]);
 
   useEffect(() => {
     if (!job?.company_name?.trim()) {
@@ -265,6 +285,19 @@ const JobDetailPage: React.FC = () => {
               href={job.apply_url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() =>
+                logActivity({
+                  action: 'apply',
+                  context: 'job',
+                  details: {
+                    jobId: job._id ?? job.job_id ?? jobId,
+                    title: job.title,
+                    company_name: job.company_name,
+                    platform: job.platform,
+                    apply_url: job.apply_url
+                  }
+                })
+              }
               className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 transition"
             >
               {applyPlatformLabel}

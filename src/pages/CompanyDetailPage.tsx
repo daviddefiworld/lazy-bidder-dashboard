@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Breadcrumbs from '../components/crawl/Breadcrumbs';
 import CompanyReportTab from '../components/company/CompanyReportTab';
@@ -16,6 +16,7 @@ import { extractKeyPeopleContacts } from '../utils/contactLinks';
 import { useConnectedExtensions } from '../hooks/useConnectedExtensions';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserActivityLogger } from '../hooks/useUserActivityLogger';
 import apiService from '../services/apiService';
 import socketService from '../services/socketService';
 import type { IndeedCompany, IndeedJob } from '../types/crawl';
@@ -37,6 +38,8 @@ const defaultAnalyzer = (platform: string, companypage: string): CompanyAnalyzer
 });
 
 const CompanyDetailPage: React.FC = () => {
+  const logActivity = useUserActivityLogger();
+  const loggedCompanyRef = useRef<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const platform = searchParams.get('platform') ?? '';
   const companypage = searchParams.get('companypage') ?? '';
@@ -124,6 +127,22 @@ const CompanyDetailPage: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!company) return;
+    const key = `${company.platform}:${company.companypage || company.company_name}`;
+    if (loggedCompanyRef.current === key) return;
+    loggedCompanyRef.current = key;
+    logActivity({
+      action: 'view_company',
+      context: 'company',
+      details: {
+        platform: company.platform,
+        companypage: company.companypage,
+        company_name: company.company_name
+      }
+    });
+  }, [company, logActivity]);
 
   useEffect(() => {
     void loadAnalyzer();

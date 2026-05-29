@@ -16,6 +16,7 @@ import JobDetailPage from './pages/JobDetailPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import CompaniesPage from './pages/CompaniesPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
+import UserActivityPage from './pages/UserActivityPage';
 
 const App: React.FC = () => {
   return (
@@ -46,6 +47,7 @@ const App: React.FC = () => {
                   <Route index element={<Navigate to="/manage/users" replace />} />
                   <Route element={<ProtectedRoute permission="manage_users" />}>
                     <Route path="users" element={<UsersPage />} />
+                    <Route path="user-activity" element={<UserActivityPage />} />
                   </Route>
                   <Route element={<ProtectedRoute permission="manage_api_keys" />}>
                     <Route path="api-keys" element={<ApiKeysPage />} />

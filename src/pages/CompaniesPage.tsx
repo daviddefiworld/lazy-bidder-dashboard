@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/layout/PageHeader';
 import CompaniesFilterBar from '../components/crawl/CompaniesFilterBar';
@@ -9,6 +9,7 @@ import PaginationBar from '../components/crawl/PaginationBar';
 import RatingStars from '../components/crawl/RatingStars';
 import RelevanceScore from '../components/company/RelevanceScore';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useUserActivityLogger } from '../hooks/useUserActivityLogger';
 import apiService from '../services/apiService';
 import type { IndeedCompany } from '../types/crawl';
 import { companyDetailPath } from '../utils/crawlUtils';
@@ -31,6 +32,7 @@ function readInitialCompaniesFilters() {
 }
 
 const CompaniesPage: React.FC = () => {
+  const logActivity = useUserActivityLogger();
   const [searchParams, setSearchParams] = useSearchParams();
   const url = readCompaniesUrlState(searchParams);
 
@@ -43,6 +45,7 @@ const CompaniesPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const prevLoggedSearchRef = useRef<string | null>(null);
 
   const offset = (url.page - 1) * PAGE_SIZE;
 
@@ -112,6 +115,30 @@ const CompaniesPage: React.FC = () => {
     syncUrl
   ]);
 
+  useEffect(() => {
+    if (!urlReady) return;
+    if (debouncedSearch !== searchInput) return;
+
+    if (prevLoggedSearchRef.current === null) {
+      prevLoggedSearchRef.current = `${debouncedSearch}\0${postedWithin}`;
+      return;
+    }
+
+    const signature = `${debouncedSearch}\0${postedWithin}`;
+    if (prevLoggedSearchRef.current === signature) return;
+    prevLoggedSearchRef.current = signature;
+
+    logActivity({
+      action: 'search',
+      context: 'companies',
+      details: {
+        query: debouncedSearch,
+        posted: postedWithin,
+        ignored: url.ignored
+      }
+    });
+  }, [urlReady, debouncedSearch, searchInput, postedWithin, url.ignored, logActivity]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -152,10 +179,32 @@ const CompaniesPage: React.FC = () => {
   };
 
   const handleSortChange = (sort: CompanyListSort) => {
+    logActivity({
+      action: 'sort',
+      context: 'companies',
+      details: {
+        sort,
+        order: url.order,
+        query: url.q,
+        posted: url.posted,
+        ignored: url.ignored
+      }
+    });
     syncUrl({ ...url, page: 1, sort });
   };
 
   const handleOrderChange = (order: ListSortOrder) => {
+    logActivity({
+      action: 'sort',
+      context: 'companies',
+      details: {
+        sort: url.sort,
+        order,
+        query: url.q,
+        posted: url.posted,
+        ignored: url.ignored
+      }
+    });
     syncUrl({ ...url, page: 1, order });
   };
 

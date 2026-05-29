@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/layout/PageHeader';
 import EmptyState from '../components/crawl/EmptyState';
@@ -9,6 +9,7 @@ import PaginationBar from '../components/crawl/PaginationBar';
 import RatingStars from '../components/crawl/RatingStars';
 import RelevanceScore from '../components/company/RelevanceScore';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useUserActivityLogger } from '../hooks/useUserActivityLogger';
 import apiService from '../services/apiService';
 import type { IndeedJob, JobListSort } from '../types/crawl';
 import { jobDetailPath, jsonItemsToLabels } from '../utils/crawlUtils';
@@ -61,6 +62,7 @@ function readInitialJobsFilters() {
 }
 
 const JobsPage: React.FC = () => {
+  const logActivity = useUserActivityLogger();
   const [searchParams, setSearchParams] = useSearchParams();
   const url = readJobsUrlState(searchParams);
 
@@ -76,6 +78,7 @@ const JobsPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const prevLoggedSearchRef = useRef<string | null>(null);
 
   const offset = (url.page - 1) * PAGE_SIZE;
   const effectiveSort: JobListSort =
@@ -160,9 +163,51 @@ const JobsPage: React.FC = () => {
     syncUrl
   ]);
 
+  useEffect(() => {
+    if (!urlReady) return;
+    if (debouncedSearch !== searchInput || debouncedSkills !== skillsInput) return;
+
+    if (prevLoggedSearchRef.current === null) {
+      prevLoggedSearchRef.current = `${debouncedSearch}\0${debouncedSkills}\0${postedWithin}`;
+      return;
+    }
+
+    const signature = `${debouncedSearch}\0${debouncedSkills}\0${postedWithin}`;
+    if (prevLoggedSearchRef.current === signature) return;
+    prevLoggedSearchRef.current = signature;
+
+    logActivity({
+      action: 'search',
+      context: 'jobs',
+      details: {
+        query: debouncedSearch,
+        skills: debouncedSkills,
+        posted: postedWithin
+      }
+    });
+  }, [
+    urlReady,
+    debouncedSearch,
+    debouncedSkills,
+    searchInput,
+    skillsInput,
+    postedWithin,
+    logActivity
+  ]);
+
   const handleSortChange = (next: JobListSort) => {
     const sort =
       next === 'relevant' && !url.q.trim() ? 'fit_score' : next;
+    logActivity({
+      action: 'sort',
+      context: 'jobs',
+      details: {
+        sort,
+        query: url.q,
+        skills: url.skills,
+        posted: url.posted
+      }
+    });
     syncUrl({
       q: url.q,
       page: 1,

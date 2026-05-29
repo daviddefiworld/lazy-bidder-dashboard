@@ -19,9 +19,14 @@ const ManageLayout: React.FC = () => {
         <aside className="sm:w-48 shrink-0">
           <nav className="flex sm:flex-col gap-1">
             {hasPermission('manage_users') ? (
-              <NavLink to="/manage/users" className={sideNavClass}>
-                Users
-              </NavLink>
+              <>
+                <NavLink to="/manage/users" className={sideNavClass}>
+                  Users
+                </NavLink>
+                <NavLink to="/manage/user-activity" className={sideNavClass}>
+                  User activity
+                </NavLink>
+              </>
             ) : null}
             {hasPermission('manage_api_keys') ? (
               <NavLink to="/manage/api-keys" className={sideNavClass}>
