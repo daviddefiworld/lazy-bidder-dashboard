@@ -1,6 +1,7 @@
 import React from 'react';
 import DetailSection from '../crawl/DetailSection';
 import JobMarkdown from '../crawl/JobMarkdown';
+import CopyButton from '../ui/CopyButton';
 import type { CompanyGrokResearch } from '../../types/companyResearch';
 import { formatDate } from '../../utils/formatters';
 
@@ -79,14 +80,17 @@ const CompanyGrokTab: React.FC<CompanyGrokTabProps> = ({
       <DetailSection
         title="Grok research"
         action={
-          <button
-            type="button"
-            onClick={onAskGrok}
-            disabled={grokBusy || !canAskGrok}
-            className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-50 disabled:opacity-50"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <CopyButton text={grok.text} label="Copy" />
+            <button
+              type="button"
+              onClick={onAskGrok}
+              disabled={grokBusy || !canAskGrok}
+              className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-50 disabled:opacity-50"
+            >
+              Refresh
+            </button>
+          </div>
         }
       >
         {grok.researchedAt ? (

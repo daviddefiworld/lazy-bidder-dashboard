@@ -1,11 +1,9 @@
 import React from 'react';
-import RatingStars from '../crawl/RatingStars';
-import RelevanceScore from './RelevanceScore';
-import CompanyContactLinks from './CompanyContactLinks';
+import CompanyOverviewCard from './CompanyOverviewCard';
 import type { ContactLink } from '../../utils/contactLinks';
 import type { IndeedCompany } from '../../types/crawl';
 import type { CompanyAnalyzer } from '../../types/companyResearch';
-import { formatRating } from '../../utils/crawlUtils';
+import { companyOverviewRelevantScore } from '../../utils/companyAnalyzer';
 
 export type CompanyDetailView = 'report' | 'grok' | 'jobboard';
 
@@ -47,82 +45,20 @@ const CompanyDetailSidebar: React.FC<CompanyDetailSidebarProps> = ({
   ignoredSaving,
   ignoredError
 }) => {
-  const name = company.company_name || 'Unnamed company';
-  const hasScore =
-    research.analyze.relevantScore != null && research.analyze.status === 'completed';
+  const relevantScore = companyOverviewRelevantScore(research, company);
 
   return (
     <aside className="space-y-5 lg:sticky lg:top-[7.5rem]">
-      <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-3">
-          <h2 className="text-sm font-semibold text-slate-900">Overview</h2>
-        </div>
-        <div className="p-5">
-          <p className="text-base font-semibold text-slate-900 line-clamp-2">{name}</p>
-          <p className="mt-1 text-xs text-slate-500 capitalize">{company.platform}</p>
-          {company.rating != null ? (
-            <div className="mt-3">
-              <RatingStars rating={company.rating} reviewCount={company.review_count} size="sm" />
-              <p className="mt-1 text-xs text-slate-500">{formatRating(company.rating)} overall</p>
-            </div>
-          ) : null}
-          {hasScore ? (
-            <div className="mt-4 flex justify-center py-2 border-t border-slate-100">
-              <RelevanceScore score={research.analyze.relevantScore!} size="sm" />
-            </div>
-          ) : null}
-          <dl className="mt-4 space-y-2 text-xs">
-            {company.headquarters ? (
-              <div>
-                <dt className="text-slate-400">Headquarters</dt>
-                <dd className="text-slate-700 font-medium">{company.headquarters}</dd>
-              </div>
-            ) : null}
-            {company.employee_range ? (
-              <div>
-                <dt className="text-slate-400">Size</dt>
-                <dd className="text-slate-700 font-medium">{company.employee_range}</dd>
-              </div>
-            ) : null}
-            {company.founded != null ? (
-              <div>
-                <dt className="text-slate-400">Founded</dt>
-                <dd className="text-slate-700 font-medium">{company.founded}</dd>
-              </div>
-            ) : null}
-            {company.ceo_approval_pct != null ? (
-              <div>
-                <dt className="text-slate-400">CEO approval</dt>
-                <dd className="text-slate-700 font-medium tabular-nums">{company.ceo_approval_pct}%</dd>
-              </div>
-            ) : null}
-            {company.jobs_count != null && company.jobs_count > 0 ? (
-              <div>
-                <dt className="text-slate-400">Jobs in database</dt>
-                <dd className="text-slate-700 font-medium tabular-nums">{company.jobs_count}</dd>
-              </div>
-            ) : null}
-          </dl>
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <CompanyContactLinks
-              contacts={contactLinks}
-              grokReady={grokReady}
-              variant="sidebar"
-            />
-          </div>
-          {!grokReady && !grokPending ? (
-            <p className="mt-3 text-[11px] text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-2 leading-snug">
-              Run <strong>Ask Grok</strong> first, then <strong>Analyze</strong> for the report.
-            </p>
-          ) : null}
-          {!connectedExtension ? (
-            <p className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
-              Connect the extension for Grok.
-              {extensionHint ? ` (${extensionHint})` : ''}
-            </p>
-          ) : null}
-        </div>
-      </section>
+      <CompanyOverviewCard
+        company={company}
+        relevantScore={relevantScore}
+        contactLinks={contactLinks}
+        grokReady={grokReady}
+        grokPending={grokPending}
+        connectedExtension={connectedExtension}
+        extensionHint={extensionHint}
+        showResearchHints
+      />
 
       <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-1.5">
         <p className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">

@@ -2,17 +2,25 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom';
 import Breadcrumbs from '../components/crawl/Breadcrumbs';
 import DetailSection from '../components/crawl/DetailSection';
-import JobCompanySidebarCard from '../components/crawl/JobCompanySidebarCard';
+import CompanyOverviewCard from '../components/company/CompanyOverviewCard';
 import JobMarkdown from '../components/crawl/JobMarkdown';
 import RelatedJobCard from '../components/crawl/RelatedJobCard';
 import RatingStars from '../components/crawl/RatingStars';
-import SearchField from '../components/crawl/SearchField';
 import TagList from '../components/crawl/TagList';
 import apiService from '../services/apiService';
+import socketService from '../services/socketService';
+import { useConnectedExtensions } from '../hooks/useConnectedExtensions';
+import { useSocket } from '../contexts/SocketContext';
 import { useUserActivityLogger } from '../hooks/useUserActivityLogger';
 import type { IndeedCompany, IndeedJob } from '../types/crawl';
-import { companyDetailPath, countSearchMatches, jsonItemsToLabels } from '../utils/crawlUtils';
-import { formatDate, formatJobPublished } from '../utils/formatters';
+import type { CompanyAnalyzer } from '../types/companyResearch';
+import {
+  companyResearchOverview,
+  companyOverviewRelevantScore,
+  defaultCompanyAnalyzer
+} from '../utils/companyAnalyzer';
+import { companyDetailPath, jsonItemsToLabels } from '../utils/crawlUtils';
+import { formatDate, formatExtensionId, formatJobPublished } from '../utils/formatters';
 
 const RELATED_JOBS_LIMIT = 15;
 
@@ -28,9 +36,12 @@ const JobDetailPage: React.FC = () => {
   const [relatedTotal, setRelatedTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sidebarLoading, setSidebarLoading] = useState(false);
+  const [analyzer, setAnalyzer] = useState<CompanyAnalyzer | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pageSearch, setPageSearch] = useState('');
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+
+  const { isConnected } = useSocket();
+  const { extensions } = useConnectedExtensions();
+  const connectedExtension = extensions[0] ?? null;
 
   const loadJob = useCallback(async () => {
     if (!jobId) return;
@@ -127,6 +138,51 @@ const JobDetailPage: React.FC = () => {
     };
   }, [job?.job_id, job?.company_name, job?.company_page, job?.platform]);
 
+  const analyzerPlatform = (company?.platform || job?.platform || '').trim();
+  const analyzerCompanypage = (company?.companypage || job?.company_page || '').trim();
+
+  const loadAnalyzer = useCallback(async () => {
+    if (!analyzerPlatform || !analyzerCompanypage) {
+      setAnalyzer(null);
+      return;
+    }
+    try {
+      const data = await apiService.getCompanyAnalyzer(analyzerPlatform, analyzerCompanypage);
+      setAnalyzer(data ?? defaultCompanyAnalyzer(analyzerPlatform, analyzerCompanypage));
+    } catch {
+      setAnalyzer(defaultCompanyAnalyzer(analyzerPlatform, analyzerCompanypage));
+    }
+  }, [analyzerPlatform, analyzerCompanypage]);
+
+  useEffect(() => {
+    void loadAnalyzer();
+  }, [loadAnalyzer]);
+
+  useEffect(() => {
+    if (!isConnected || !analyzerPlatform || !analyzerCompanypage) return;
+
+    const onAnalyzerUpdated = (data: { platform: string; companypage: string }) => {
+      if (data.platform !== analyzerPlatform || data.companypage !== analyzerCompanypage) return;
+      void loadAnalyzer();
+    };
+
+    socketService.on('company:analyzer_updated', onAnalyzerUpdated);
+    return () => {
+      socketService.off('company:analyzer_updated', onAnalyzerUpdated);
+    };
+  }, [isConnected, analyzerPlatform, analyzerCompanypage, loadAnalyzer]);
+
+  useEffect(() => {
+    if (analyzer?.grok.status !== 'pending' || !analyzerPlatform || !analyzerCompanypage) return;
+    const interval = setInterval(() => void loadAnalyzer(), 5000);
+    return () => clearInterval(interval);
+  }, [analyzer?.grok.status, analyzerPlatform, analyzerCompanypage, loadAnalyzer]);
+
+  const research = useMemo((): CompanyAnalyzer | null => {
+    if (!analyzerPlatform || !analyzerCompanypage) return null;
+    return analyzer ?? defaultCompanyAnalyzer(analyzerPlatform, analyzerCompanypage);
+  }, [analyzer, analyzerPlatform, analyzerCompanypage]);
+
   const benefits = useMemo(
     () => (job ? jsonItemsToLabels(job.benefits_json) : []),
     [job]
@@ -142,22 +198,39 @@ const JobDetailPage: React.FC = () => {
   const hasTags = benefits.length > 0 || occupations.length > 0 || attributes.length > 0;
   const hasPayload = Object.keys(job?.payload_json ?? {}).length > 0;
 
-  const descriptionMatches = useMemo(() => {
-    if (!job?.description_text || !pageSearch.trim()) return 0;
-    return countSearchMatches(job.description_text, pageSearch);
-  }, [job?.description_text, pageSearch]);
+  const displayCompany = useMemo((): IndeedCompany | null => {
+    if (company) return company;
+    if (!job?.company_name?.trim() || !job.platform) return null;
+    return {
+      platform: job.platform,
+      companypage: job.company_page?.trim() || '',
+      company_name: job.company_name.trim(),
+      rating: job.company_review_rating ?? null,
+      review_count: job.company_review_count ?? null,
+      employer_key: job.employer_key || '',
+      headquarters: '',
+      employee_range: '',
+      website_url: '',
+      is_gig_employer: 0,
+      faqs_json: [],
+      job_titles_json: [],
+      job_locations_json: [],
+      similar_companies_json: [],
+      payload_json: {},
+      detail_scraped_at: ''
+    };
+  }, [company, job]);
 
-  const copyDescription = useCallback(async () => {
-    if (!job?.description_text) return;
-    try {
-      await navigator.clipboard.writeText(job.description_text);
-      setCopyStatus('ok');
-      window.setTimeout(() => setCopyStatus('idle'), 2000);
-    } catch {
-      setCopyStatus('fail');
-      window.setTimeout(() => setCopyStatus('idle'), 2000);
-    }
-  }, [job?.description_text]);
+  const overviewFromResearch = useMemo(() => {
+    if (!research || !displayCompany) return null;
+    const { grokReady, grokPending, contactLinks } = companyResearchOverview(research);
+    return {
+      grokReady,
+      grokPending,
+      contactLinks,
+      relevantScore: companyOverviewRelevantScore(research, displayCompany)
+    };
+  }, [research, displayCompany]);
 
   if (!jobId) {
     return (
@@ -204,10 +277,6 @@ const JobDetailPage: React.FC = () => {
         company_name: companyPageSlug ? undefined : companyName
       })
     : null;
-  const applyPlatformLabel = job.platform?.trim()
-    ? `Apply on ${job.platform.charAt(0).toUpperCase()}${job.platform.slice(1)}`
-    : 'Apply now';
-
   return (
     <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-8 pb-24">
       <Breadcrumbs
@@ -278,79 +347,13 @@ const JobDetailPage: React.FC = () => {
             />
           ) : null}
         </div>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          {job.apply_url ? (
-            <a
-              href={job.apply_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() =>
-                logActivity({
-                  action: 'apply',
-                  context: 'job',
-                  details: {
-                    jobId: job._id ?? job.job_id ?? jobId,
-                    title: job.title,
-                    company_name: job.company_name,
-                    platform: job.platform,
-                    apply_url: job.apply_url
-                  }
-                })
-              }
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 transition"
-            >
-              {applyPlatformLabel}
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
-          ) : null}
-          {job.description_text ? (
-            <button
-              type="button"
-              onClick={() => void copyDescription()}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-            >
-              {copyStatus === 'ok' ? 'Copied' : copyStatus === 'fail' ? 'Copy failed' : 'Copy description'}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void loadJob()}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
-          >
-            Refresh
-          </button>
-        </div>
       </header>
-
-      <div className="sticky top-[3.5rem] z-10 py-3 mb-6 rounded-xl bg-white/95 backdrop-blur shadow-sm ring-1 ring-slate-200/60 px-4">
-        <SearchField
-          value={pageSearch}
-          onChange={setPageSearch}
-          placeholder="Search in description and tags…"
-          id="job-detail-search"
-        />
-        {pageSearch.trim() ? (
-          <p className="mt-2 text-xs text-slate-500">
-            {descriptionMatches > 0 ? (
-              <>
-                <span className="font-medium text-slate-700">{descriptionMatches}</span> match
-                {descriptionMatches === 1 ? '' : 'es'} in description
-              </>
-            ) : (
-              'No matches in description'
-            )}
-          </p>
-        ) : null}
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_300px] gap-8 items-start">
         <div className="space-y-5 min-w-0">
           <DetailSection title="Description">
             {job.description_text ? (
-              <JobMarkdown content={job.description_text} searchQuery={pageSearch} />
+              <JobMarkdown content={job.description_text} />
             ) : (
               <p className="text-sm text-slate-400 italic">No description text stored.</p>
             )}
@@ -361,17 +364,17 @@ const JobDetailPage: React.FC = () => {
               <div className="space-y-4">
                 {benefits.length > 0 && (
                   <TagGroup label="Benefits">
-                    <FilteredTagList items={benefits} query={pageSearch} variant="benefit" />
+                    <TagList items={benefits} variant="benefit" />
                   </TagGroup>
                 )}
                 {occupations.length > 0 && (
                   <TagGroup label="Occupations">
-                    <FilteredTagList items={occupations} query={pageSearch} />
+                    <TagList items={occupations} />
                   </TagGroup>
                 )}
                 {attributes.length > 0 && (
                   <TagGroup label="Attributes">
-                    <FilteredTagList items={attributes} query={pageSearch} />
+                    <TagList items={attributes} />
                   </TagGroup>
                 )}
               </div>
@@ -409,15 +412,26 @@ const JobDetailPage: React.FC = () => {
         </div>
 
         <aside className="space-y-5 lg:sticky lg:top-[7.5rem]">
-          <JobCompanySidebarCard
-            companyName={companyName}
-            platform={job.platform}
-            companyPage={companyPageSlug}
-            jobRating={job.company_review_rating}
-            jobReviewCount={job.company_review_count}
-            company={company}
-            loading={sidebarLoading && !company}
-          />
+          {displayCompany ? (
+            <CompanyOverviewCard
+              company={displayCompany}
+              relevantScore={overviewFromResearch?.relevantScore ?? null}
+              contactLinks={overviewFromResearch?.contactLinks ?? []}
+              grokReady={overviewFromResearch?.grokReady ?? false}
+              grokPending={overviewFromResearch?.grokPending ?? false}
+              connectedExtension={!!connectedExtension}
+              extensionHint={
+                connectedExtension
+                  ? formatExtensionId(connectedExtension.extensionId)
+                  : undefined
+              }
+              showResearchHints={!!analyzerCompanypage}
+              loading={sidebarLoading && !company}
+              linkToDetail
+            />
+          ) : sidebarLoading ? (
+            <div className="h-48 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+          ) : null}
 
           <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
             <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-3">
@@ -473,18 +487,5 @@ const TagGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ labe
     {children}
   </div>
 );
-
-const FilteredTagList: React.FC<{
-  items: string[];
-  query: string;
-  variant?: 'default' | 'benefit';
-}> = ({ items, query, variant }) => {
-  const q = query.trim().toLowerCase();
-  const filtered = q ? items.filter((i) => i.toLowerCase().includes(q)) : items;
-  if (q && filtered.length === 0) {
-    return <p className="text-sm text-slate-400 italic">No matching tags</p>;
-  }
-  return <TagList items={filtered} variant={variant} />;
-};
 
 export default JobDetailPage;

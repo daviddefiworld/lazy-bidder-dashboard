@@ -1,6 +1,7 @@
 import React from 'react';
 import DetailSection from '../crawl/DetailSection';
 import JobMarkdown from '../crawl/JobMarkdown';
+import CopyButton from '../ui/CopyButton';
 import type { CompanyAiAnalyze } from '../../types/companyResearch';
 import { formatDate } from '../../utils/formatters';
 
@@ -90,16 +91,19 @@ const CompanyReportTab: React.FC<CompanyReportTabProps> = ({
     <DetailSection
       title={title}
       action={
-        !isMain ? (
-          <button
-            type="button"
-            onClick={onAnalyze}
-            disabled={isRunning || !grokReady}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Re-run
-          </button>
-        ) : undefined
+        <div className="flex items-center gap-2">
+          <CopyButton text={analyze.report!} label="Copy" />
+          {!isMain ? (
+            <button
+              type="button"
+              onClick={onAnalyze}
+              disabled={isRunning || !grokReady}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Re-run
+            </button>
+          ) : null}
+        </div>
       }
     >
       {metaParts.length > 0 ? (
