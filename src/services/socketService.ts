@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import type { CompanyBatchAnalyzeStatus } from './apiService';
+import type { ScraperCommandId, ScraperRunState, ScraperWorkerStatus } from '../types/scraper';
 
 export interface SocketMessage {
   type: string;
@@ -51,6 +52,10 @@ export interface SocketEvents {
   'action:order_sent': (data: { message: string; orderId: string; extensionId: string }) => void;
   'company:analyzer_updated': (data: { platform: string; companypage: string; orderId?: string }) => void;
   'company:batch_analyzer_updated': (data: { batch: CompanyBatchAnalyzeStatus }) => void;
+  'scraper:status': (data: ScraperWorkerStatus) => void;
+  'scraper:run_updated': (data: { run: ScraperRunState }) => void;
+  'scraper:command_queued': (data: { runId: string; commandId: ScraperCommandId }) => void;
+  'scraper:order_stopped': (data: { orderId: string }) => void;
 }
 
 export interface IndeedOrderPayload {
@@ -248,6 +253,22 @@ class SocketService {
 
   cancelOrder(extensionId: string, orderId: string): void {
     this.sendMessage('cancel_order', { extensionId, orderId });
+  }
+
+  requestScraperStatus(): void {
+    this.sendMessage('request_scraper_status', {});
+  }
+
+  runScraperCommand(commandId: ScraperCommandId, params?: Record<string, unknown>, orderId?: string): void {
+    this.sendMessage('scraper_run_command', {
+      ...(orderId ? { runId: orderId, orderId } : {}),
+      commandId,
+      params
+    });
+  }
+
+  stopScraperOrder(orderId: string): void {
+    this.sendMessage('scraper_stop_order', { orderId, runId: orderId });
   }
 }
 

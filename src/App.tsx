@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage';
 import UsersPage from './pages/UsersPage';
 import ApiKeysPage from './pages/ApiKeysPage';
 import ActionsPage from './pages/ActionsPage';
+import ScrapingPage from './pages/ScrapingPage';
 import JobsPage from './pages/JobsPage';
 import JobDetailPage from './pages/JobDetailPage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -54,6 +55,7 @@ const App: React.FC = () => {
                   </Route>
                   <Route element={<ProtectedRoute permission="manage_actions" />}>
                     <Route path="actions" element={<ActionsPage />} />
+                    <Route path="scraping" element={<ScrapingPage />} />
                   </Route>
                 </Route>
                 <Route path="/users" element={<Navigate to="/manage/users" replace />} />

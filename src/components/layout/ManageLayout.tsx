@@ -34,9 +34,14 @@ const ManageLayout: React.FC = () => {
               </NavLink>
             ) : null}
             {hasPermission('manage_actions') ? (
-              <NavLink to="/manage/actions" className={sideNavClass}>
-                Actions
-              </NavLink>
+              <>
+                <NavLink to="/manage/actions" className={sideNavClass}>
+                  Actions
+                </NavLink>
+                <NavLink to="/manage/scraping" className={sideNavClass}>
+                  Scraping
+                </NavLink>
+              </>
             ) : null}
           </nav>
         </aside>

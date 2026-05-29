@@ -12,6 +12,7 @@ import type {
 import type { ActionOrder } from '../types/actionOrder';
 import type { CompanyAnalyzer, GrokResearchStartResult } from '../types/companyResearch';
 import type { AuthUser, DashboardPermission } from '../types/auth';
+import type { ScraperWorkerStatus, ScraperRunState } from '../types/scraper';
 import type {
   LogUserActivityInput,
   UserActivityBaseParams,
@@ -360,7 +361,11 @@ class ApiService {
     return this.axiosInstance.delete(`/api/profiles/${profileId}`);
   }
 
-  async getJobsCountByDay(params: { days: number; platform?: string }): Promise<JobsCountByDayResult> {
+  async getJobsCountByDay(params: {
+    days: number;
+    platform?: string;
+    relevant_threshold?: number;
+  }): Promise<JobsCountByDayResult> {
     return this.axiosInstance.get('/api/admin/crawl/analytics/jobs-per-day', { params });
   }
 
@@ -469,6 +474,14 @@ class ApiService {
 
   async recombineCrawlJobs(): Promise<CombineActionResult> {
     return this.axiosInstance.post('/api/admin/crawl/actions/recombine-jobs');
+  }
+
+  async getScraperStatus(): Promise<ScraperWorkerStatus> {
+    return this.axiosInstance.get('/api/admin/scraper/status');
+  }
+
+  async getScraperOrders(): Promise<{ open: ScraperRunState[]; recent: ScraperRunState[] }> {
+    return this.axiosInstance.get('/api/admin/scraper/orders');
   }
 }
 

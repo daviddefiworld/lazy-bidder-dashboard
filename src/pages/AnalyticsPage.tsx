@@ -14,6 +14,14 @@ import ErrorAlert from '../components/ErrorAlert';
 import LoadingSpinner from '../components/LoadingSpinner';
 import apiService from '../services/apiService';
 import type { JobsCountByDayPlatformPoint, JobsCountByDayPoint } from '../types/analytics';
+import {
+  clampRelevantThreshold,
+  readRelevantJobsThreshold,
+  RELEVANT_THRESHOLD_DEFAULT,
+  RELEVANT_THRESHOLD_MAX,
+  RELEVANT_THRESHOLD_MIN,
+  saveRelevantJobsThreshold
+} from '../utils/analyticsPreferences';
 
 const DAY_RANGE_OPTIONS = [7, 30, 90] as const;
 type DayRange = (typeof DAY_RANGE_OPTIONS)[number];
@@ -36,6 +44,12 @@ function formatTooltipDate(isoDate: string): string {
 const selectClass =
   'rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20';
 
+const thresholdInputClass =
+  'w-full rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-900 tabular-nums shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20';
+
+const secondaryButtonClass =
+  'rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 shadow-sm hover:bg-slate-50 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-60';
+
 /** Main chart: total jobs vs relevant jobs overlay. */
 const ALL_JOBS_BAR_COLOR = '#93c5fd';
 const FIT_SCORE_OVER_30_COLOR = '#15803d';
@@ -43,13 +57,19 @@ const FIT_SCORE_OVER_30_COLOR = '#15803d';
 const INDEED_PLATFORM_COLOR = '#60a5fa';
 const GLASSDOOR_PLATFORM_COLOR = '#22c55e';
 const RELEVANT_JOBS_LABEL = 'Relevant jobs';
-const RELEVANT_JOBS_TOOLTIP = 'Fit score > 30';
+
+function relevantJobsTooltip(threshold: number): string {
+  return `Fit score > ${threshold}`;
+}
 
 const AnalyticsPage: React.FC = () => {
   const [days, setDays] = useState<DayRange>(30);
+  const [appliedThreshold, setAppliedThreshold] = useState(readRelevantJobsThreshold);
+  const [thresholdModalOpen, setThresholdModalOpen] = useState(false);
+  const [draftThreshold, setDraftThreshold] = useState(RELEVANT_THRESHOLD_DEFAULT);
   const [combinedSeries, setCombinedSeries] = useState<JobsCountByDayPoint[]>([]);
   const [combinedTotal, setCombinedTotal] = useState(0);
-  const [combinedFitScoreOver30Total, setCombinedFitScoreOver30Total] = useState(0);
+  const [combinedRelevantTotal, setCombinedRelevantTotal] = useState(0);
   const [platformSeries, setPlatformSeries] = useState<JobsCountByDayPlatformPoint[]>([]);
   const [platformTotals, setPlatformTotals] = useState({ indeed: 0, glassdoor: 0 });
   const [loading, setLoading] = useState(true);
@@ -60,25 +80,43 @@ const AnalyticsPage: React.FC = () => {
     setError(null);
     try {
       const [combined, byPlatform] = await Promise.all([
-        apiService.getJobsCountByDay({ days }),
+        apiService.getJobsCountByDay({ days, relevant_threshold: appliedThreshold }),
         apiService.getJobsCountByDayByPlatform({ days })
       ]);
       setCombinedSeries(combined.series);
       setCombinedTotal(combined.total);
-      setCombinedFitScoreOver30Total(combined.totalFitScoreOver30);
+      setCombinedRelevantTotal(combined.totalRelevant);
+      setAppliedThreshold(combined.relevantThreshold);
       setPlatformSeries(byPlatform.series);
       setPlatformTotals(byPlatform.totals);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics');
       setCombinedSeries([]);
       setCombinedTotal(0);
-      setCombinedFitScoreOver30Total(0);
+      setCombinedRelevantTotal(0);
       setPlatformSeries([]);
       setPlatformTotals({ indeed: 0, glassdoor: 0 });
     } finally {
       setLoading(false);
     }
-  }, [days]);
+  }, [days, appliedThreshold]);
+
+  const openThresholdModal = () => {
+    setDraftThreshold(appliedThreshold);
+    setThresholdModalOpen(true);
+  };
+
+  const closeThresholdModal = () => {
+    setThresholdModalOpen(false);
+  };
+
+  const applyThreshold = (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = clampRelevantThreshold(draftThreshold);
+    setAppliedThreshold(next);
+    saveRelevantJobsThreshold(next);
+    closeThresholdModal();
+  };
 
   useEffect(() => {
     void load();
@@ -106,19 +144,30 @@ const AnalyticsPage: React.FC = () => {
       <PageHeader
         title="Analytics"
         actions={
-          <select
-            className={selectClass}
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value) as DayRange)}
-            disabled={loading}
-            aria-label="Date range"
-          >
-            {DAY_RANGE_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                Last {n} days
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={openThresholdModal}
+              disabled={loading}
+              className={secondaryButtonClass}
+              title={relevantJobsTooltip(appliedThreshold)}
+            >
+              Relevant jobs
+            </button>
+            <select
+              className={selectClass}
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value) as DayRange)}
+              disabled={loading}
+              aria-label="Date range"
+            >
+              {DAY_RANGE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  Last {n} days
+                </option>
+              ))}
+            </select>
+          </div>
         }
       />
 
@@ -139,11 +188,11 @@ const AnalyticsPage: React.FC = () => {
                   </span>
                 </span>
                 <span>
-                  <span title={RELEVANT_JOBS_TOOLTIP} className="cursor-help">
+                  <span title={relevantJobsTooltip(appliedThreshold)} className="cursor-help">
                     {RELEVANT_JOBS_LABEL}:
                   </span>{' '}
                   <span className="font-semibold text-slate-900 tabular-nums">
-                    {combinedFitScoreOver30Total.toLocaleString()}
+                    {combinedRelevantTotal.toLocaleString()}
                   </span>
                 </span>
                 {combinedPeak > 0 && (
@@ -197,7 +246,8 @@ const AnalyticsPage: React.FC = () => {
                               All jobs: {row.count.toLocaleString()}
                             </p>
                             <p className="text-slate-600 tabular-nums">
-                              {RELEVANT_JOBS_LABEL}: {row.fitScoreOver30.toLocaleString()}
+                              {RELEVANT_JOBS_LABEL} ({relevantJobsTooltip(appliedThreshold)}):{' '}
+                              {row.relevantCount.toLocaleString()}
                             </p>
                           </div>
                         );
@@ -212,7 +262,7 @@ const AnalyticsPage: React.FC = () => {
                       maxBarSize={52}
                     />
                     <Bar
-                      dataKey="fitScoreOver30"
+                      dataKey="relevantCount"
                       name={RELEVANT_JOBS_LABEL}
                       fill={FIT_SCORE_OVER_30_COLOR}
                       radius={[4, 4, 0, 0]}
@@ -307,6 +357,79 @@ const AnalyticsPage: React.FC = () => {
           </section>
         </div>
       )}
+
+      {thresholdModalOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={closeThresholdModal}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="relevant-jobs-threshold-title"
+            aria-modal="true"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 id="relevant-jobs-threshold-title" className="text-base font-semibold text-slate-900">
+                Relevant jobs threshold
+              </h3>
+              <button
+                type="button"
+                onClick={closeThresholdModal}
+                className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <form onSubmit={applyThreshold} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="relevant-threshold"
+                  className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500"
+                >
+                  Minimum fit score
+                </label>
+                <p className="mb-2 text-sm text-slate-600">
+                  Count jobs whose employer fit score is greater than this value.
+                </p>
+                <input
+                  id="relevant-threshold"
+                  type="number"
+                  min={RELEVANT_THRESHOLD_MIN}
+                  max={RELEVANT_THRESHOLD_MAX}
+                  value={draftThreshold}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    if (Number.isFinite(next)) {
+                      setDraftThreshold(clampRelevantThreshold(next));
+                    }
+                  }}
+                  className={thresholdInputClass}
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeThresholdModal}
+                  className="rounded border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+                >
+                  Apply
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 };
