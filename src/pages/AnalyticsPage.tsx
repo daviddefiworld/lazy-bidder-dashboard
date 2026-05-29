@@ -36,11 +36,14 @@ function formatTooltipDate(isoDate: string): string {
 const selectClass =
   'rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20';
 
-const INDEED_COLOR = '#2563eb';
-const GLASSDOOR_COLOR = '#0caa41';
-/** Combined chart: total jobs backdrop vs fit-score overlay. */
+/** Main chart: total jobs vs relevant jobs overlay. */
 const ALL_JOBS_BAR_COLOR = '#93c5fd';
 const FIT_SCORE_OVER_30_COLOR = '#15803d';
+/** Platform breakdown — same blue/green family as the main chart. */
+const INDEED_PLATFORM_COLOR = '#60a5fa';
+const GLASSDOOR_PLATFORM_COLOR = '#22c55e';
+const RELEVANT_JOBS_LABEL = 'Relevant jobs';
+const RELEVANT_JOBS_TOOLTIP = 'Fit score > 30';
 
 const AnalyticsPage: React.FC = () => {
   const [days, setDays] = useState<DayRange>(30);
@@ -125,9 +128,9 @@ const AnalyticsPage: React.FC = () => {
         <LoadingSpinner message="Loading job counts…" />
       ) : (
         <div className="space-y-6">
-          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-900">All jobs per day</h2>
+          <section className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-900">All jobs per day</h2>
               <div className="flex flex-wrap gap-4 text-sm text-slate-600">
                 <span>
                   Total:{' '}
@@ -136,7 +139,9 @@ const AnalyticsPage: React.FC = () => {
                   </span>
                 </span>
                 <span>
-                  Fit score &gt; 30:{' '}
+                  <span title={RELEVANT_JOBS_TOOLTIP} className="cursor-help">
+                    {RELEVANT_JOBS_LABEL}:
+                  </span>{' '}
                   <span className="font-semibold text-slate-900 tabular-nums">
                     {combinedFitScoreOver30Total.toLocaleString()}
                   </span>
@@ -158,12 +163,12 @@ const AnalyticsPage: React.FC = () => {
                 Actions page.
               </p>
             ) : (
-              <div className="px-2 sm:px-4 py-6 h-[300px]">
+              <div className="px-2 sm:px-4 py-6 h-[380px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={combinedChartData}
                     margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-                    barGap={-48}
+                    barGap={-52}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis
@@ -192,7 +197,7 @@ const AnalyticsPage: React.FC = () => {
                               All jobs: {row.count.toLocaleString()}
                             </p>
                             <p className="text-slate-600 tabular-nums">
-                              Fit score &gt; 30: {row.fitScoreOver30.toLocaleString()}
+                              {RELEVANT_JOBS_LABEL}: {row.fitScoreOver30.toLocaleString()}
                             </p>
                           </div>
                         );
@@ -204,14 +209,14 @@ const AnalyticsPage: React.FC = () => {
                       name="All jobs"
                       fill={ALL_JOBS_BAR_COLOR}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={48}
+                      maxBarSize={52}
                     />
                     <Bar
                       dataKey="fitScoreOver30"
-                      name="Fit score > 30"
+                      name={RELEVANT_JOBS_LABEL}
                       fill={FIT_SCORE_OVER_30_COLOR}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={48}
+                      maxBarSize={52}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -219,19 +224,19 @@ const AnalyticsPage: React.FC = () => {
             )}
           </section>
 
-          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-900">Indeed vs Glassdoor per day</h2>
-              <div className="flex flex-wrap gap-4 text-sm text-slate-600">
+          <section className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-medium text-slate-600">Indeed vs Glassdoor per day</h2>
+              <div className="flex flex-wrap gap-4 text-xs text-slate-500">
                 <span>
                   Indeed:{' '}
-                  <span className="font-semibold text-slate-900 tabular-nums">
+                  <span className="font-semibold text-slate-700 tabular-nums">
                     {platformTotals.indeed.toLocaleString()}
                   </span>
                 </span>
                 <span>
                   Glassdoor:{' '}
-                  <span className="font-semibold text-slate-900 tabular-nums">
+                  <span className="font-semibold text-slate-700 tabular-nums">
                     {platformTotals.glassdoor.toLocaleString()}
                   </span>
                 </span>
@@ -239,11 +244,11 @@ const AnalyticsPage: React.FC = () => {
             </div>
 
             {platformTotal === 0 ? (
-              <p className="px-5 py-12 text-center text-sm text-slate-500">
+              <p className="px-5 py-10 text-center text-sm text-slate-500">
                 No Indeed or Glassdoor crawl jobs with a post date in this period.
               </p>
             ) : (
-              <div className="px-2 sm:px-4 py-6 h-[300px]">
+              <div className="px-2 sm:px-4 py-4 h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={platformChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -262,6 +267,7 @@ const AnalyticsPage: React.FC = () => {
                       width={48}
                     />
                     <Tooltip
+                      cursor={{ fill: 'rgba(96, 165, 250, 0.15)' }}
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
                         const row = payload[0].payload as JobsCountByDayPlatformPoint & { label: string };
@@ -279,14 +285,20 @@ const AnalyticsPage: React.FC = () => {
                       }}
                     />
                     <Legend />
-                    <Bar dataKey="indeed" name="Indeed" stackId="platform" fill={INDEED_COLOR} maxBarSize={48} />
+                    <Bar
+                      dataKey="indeed"
+                      name="Indeed"
+                      stackId="platform"
+                      fill={INDEED_PLATFORM_COLOR}
+                      maxBarSize={40}
+                    />
                     <Bar
                       dataKey="glassdoor"
                       name="Glassdoor"
                       stackId="platform"
-                      fill={GLASSDOOR_COLOR}
+                      fill={GLASSDOOR_PLATFORM_COLOR}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={48}
+                      maxBarSize={40}
                     />
                   </BarChart>
                 </ResponsiveContainer>
