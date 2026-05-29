@@ -38,11 +38,15 @@ const selectClass =
 
 const INDEED_COLOR = '#2563eb';
 const GLASSDOOR_COLOR = '#0caa41';
+/** Combined chart: total jobs backdrop vs fit-score overlay. */
+const ALL_JOBS_BAR_COLOR = '#93c5fd';
+const FIT_SCORE_OVER_30_COLOR = '#15803d';
 
 const AnalyticsPage: React.FC = () => {
   const [days, setDays] = useState<DayRange>(30);
   const [combinedSeries, setCombinedSeries] = useState<JobsCountByDayPoint[]>([]);
   const [combinedTotal, setCombinedTotal] = useState(0);
+  const [combinedFitScoreOver30Total, setCombinedFitScoreOver30Total] = useState(0);
   const [platformSeries, setPlatformSeries] = useState<JobsCountByDayPlatformPoint[]>([]);
   const [platformTotals, setPlatformTotals] = useState({ indeed: 0, glassdoor: 0 });
   const [loading, setLoading] = useState(true);
@@ -58,12 +62,14 @@ const AnalyticsPage: React.FC = () => {
       ]);
       setCombinedSeries(combined.series);
       setCombinedTotal(combined.total);
+      setCombinedFitScoreOver30Total(combined.totalFitScoreOver30);
       setPlatformSeries(byPlatform.series);
       setPlatformTotals(byPlatform.totals);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics');
       setCombinedSeries([]);
       setCombinedTotal(0);
+      setCombinedFitScoreOver30Total(0);
       setPlatformSeries([]);
       setPlatformTotals({ indeed: 0, glassdoor: 0 });
     } finally {
@@ -129,6 +135,12 @@ const AnalyticsPage: React.FC = () => {
                     {combinedTotal.toLocaleString()}
                   </span>
                 </span>
+                <span>
+                  Fit score &gt; 30:{' '}
+                  <span className="font-semibold text-slate-900 tabular-nums">
+                    {combinedFitScoreOver30Total.toLocaleString()}
+                  </span>
+                </span>
                 {combinedPeak > 0 && (
                   <span>
                     Peak day:{' '}
@@ -148,7 +160,11 @@ const AnalyticsPage: React.FC = () => {
             ) : (
               <div className="px-2 sm:px-4 py-6 h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={combinedChartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                  <BarChart
+                    data={combinedChartData}
+                    margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
+                    barGap={-48}
+                  >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis
                       dataKey="label"
@@ -165,7 +181,7 @@ const AnalyticsPage: React.FC = () => {
                       width={48}
                     />
                     <Tooltip
-                      cursor={{ fill: 'rgba(37, 99, 235, 0.06)' }}
+                      cursor={{ fill: 'rgba(147, 197, 253, 0.25)' }}
                       content={({ active, payload }) => {
                         if (!active || !payload?.length) return null;
                         const row = payload[0].payload as JobsCountByDayPoint & { label: string };
@@ -173,13 +189,30 @@ const AnalyticsPage: React.FC = () => {
                           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-md">
                             <p className="font-medium text-slate-900">{formatTooltipDate(row.date)}</p>
                             <p className="text-slate-600 tabular-nums">
-                              {row.count.toLocaleString()} job{row.count === 1 ? '' : 's'}
+                              All jobs: {row.count.toLocaleString()}
+                            </p>
+                            <p className="text-slate-600 tabular-nums">
+                              Fit score &gt; 30: {row.fitScoreOver30.toLocaleString()}
                             </p>
                           </div>
                         );
                       }}
                     />
-                    <Bar dataKey="count" fill={INDEED_COLOR} radius={[4, 4, 0, 0]} maxBarSize={48} />
+                    <Legend />
+                    <Bar
+                      dataKey="count"
+                      name="All jobs"
+                      fill={ALL_JOBS_BAR_COLOR}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={48}
+                    />
+                    <Bar
+                      dataKey="fitScoreOver30"
+                      name="Fit score > 30"
+                      fill={FIT_SCORE_OVER_30_COLOR}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={48}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

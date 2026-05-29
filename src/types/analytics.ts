@@ -1,11 +1,13 @@
 export interface JobsCountByDayPoint {
   date: string;
   count: number;
+  fitScoreOver30: number;
 }
 
 export interface JobsCountByDayResult {
   series: JobsCountByDayPoint[];
   total: number;
+  totalFitScoreOver30: number;
   days: number;
 }
 
